@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IMDb List Generator</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; }
+        .hero-card { border-radius: 12px; border: none; }
+        .table-responsive { max-height: 500px; }
+    </style>
+</head>
+<body>
+<div class="container py-5">
+    <div class="row justify-content-center mb-4">
+        <div class="col-lg-8 text-center">
+            <h1 class="fw-bold">🎬 IMDb List Generator</h1>
+            <p class="text-muted">Extract titles, IMDb IDs, ratings, download files, or fetch via REST API endpoints.</p>
+        </div>
+    </div>
+
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            {% if env_lists %}
+            <div class="card hero-card shadow-sm p-4 mb-4 bg-white">
+                <h5 class="fw-bold mb-2">⚡ Environment Auto-Synced Lists</h5>
+                <p class="text-muted small">Configured via <code>IMDB_LIST_URLS</code> and served via <code>/api/lists</code></p>
+                <div class="list-group">
+                    {% for key, list_data in env_lists.items() %}
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>{{ key }}</strong>: <a href="{{ list_data.url }}" target="_blank" class="text-decoration-none">{{ list_data.url }}</a>
+                        </div>
+                        <div>
+                            <span class="badge bg-primary rounded-pill me-2">{{ list_data.count }} items</span>
+                            <a href="/api/lists/{{ key }}" class="btn btn-sm btn-outline-secondary" target="_blank">JSON API</a>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="card hero-card shadow-sm p-4 mb-4">
+                <form method="POST" action="/">
+                    <div class="mb-3">
+                        <label for="url" class="form-label fw-semibold">Scrape Custom IMDb URL</label>
+                        <input type="url" class="form-control" id="url" name="url" placeholder="https://www.imdb.com/chart/top/" value="{{ url if url else '' }}" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="format" class="form-label fw-semibold">Export Format</label>
+                        <select class="form-select" id="format" name="format">
+                            <option value="all" selected>All Formats (CSV, JSON, TXT)</option>
+                            <option value="csv">CSV Only</option>
+                            <option value="json">JSON Only</option>
+                            <option value="txt">TXT (IMDb IDs only)</option>
+                        </select>
+                    </div>
+
+                    <button type="submit" class="btn btn-warning w-100 fw-bold">Scrape & Generate List</button>
+                </form>
+            </div>
+
+            {% if files %}
+            <div class="card hero-card shadow-sm p-4 mb-4 text-center">
+                <h5 class="fw-bold mb-3">📥 Download Options</h5>
+                <div class="d-flex justify-content-center gap-2 flex-wrap">
+                    {% if files.csv %}
+                        <a href="{{ url_for('download_file', filename=files.csv) }}" class="btn btn-outline-primary">Download CSV</a>
+                    {% endif %}
+                    {% if files.json %}
+                        <a href="{{ url_for('download_file', filename=files.json) }}" class="btn btn-outline-success">Download JSON</a>
+                    {% endif %}
+                    {% if files.txt %}
+                        <a href="{{ url_for('download_file', filename=files.txt) }}" class="btn btn-outline-dark">Download TXT (IDs)</a>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+
+            {% if items %}
+            <div class="card hero-card shadow-sm p-4">
+                <h5 class="fw-bold mb-3">Extracted Items ({{ items|length }})</h5>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>#</th>
+                                <th>IMDb ID</th>
+                                <th>Title</th>
+                                <th>Year</th>
+                                <th>Rating</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in items %}
+                            <tr>
+                                <td>{{ item.position }}</td>
+                                <td><code>{{ item.imdb_id }}</code></td>
+                                <td><a href="{{ item.imdb_url }}" target="_blank" class="text-decoration-none fw-semibold">{{ item.title }}</a></td>
+                                <td>{{ item.year }}</td>
+                                <td><span class="badge bg-warning text-dark">★ {{ item.rating }}</span></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
