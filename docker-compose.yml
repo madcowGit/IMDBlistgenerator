@@ -1,0 +1,18 @@
+services:
+  imdb-list-generator:
+    image: ${DOCKER_IMAGE:-imdblistgenerator:latest}
+    build: .
+    container_name: imdb_list_generator
+    ports:
+      - "${PORT:-5000}:5000"
+    environment:
+      - PORT=${PORT:-5000}
+      - IMDB_LIST_URLS=${IMDB_LIST_URLS:-https://www.imdb.com/chart/top/}
+      - AUTO_SYNC_INTERVAL=${AUTO_SYNC_INTERVAL:-3600}
+      - FLASK_SECRET_KEY=${FLASK_SECRET_KEY:-change-this-secret-key}
+    volumes:
+      - imdb_data:/app/output
+    restart: unless-stopped
+
+volumes:
+  imdb_data:
