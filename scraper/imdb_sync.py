@@ -6,6 +6,7 @@ from typing import Any, Dict, List
 
 from bs4 import BeautifulSoup
 from selenium import webdriver
+from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import WebDriverWait
@@ -46,14 +47,14 @@ class IMDbSyncScraper:
     def _scroll_to_bottom(self):
         try:
             last_height = self.driver.execute_script("return document.body.scrollHeight")
-        except Exception:
+        except WebDriverException:
             return
         for _ in range(10):
             self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
             time.sleep(1.2)
             try:
                 new_height = self.driver.execute_script("return document.body.scrollHeight")
-            except Exception:
+            except WebDriverException:
                 break
             if new_height == last_height:
                 break
@@ -76,7 +77,7 @@ class IMDbSyncScraper:
                 WebDriverWait(self.driver, self.timeout).until(lambda d: d.execute_script("return document.readyState") == "complete")
                 WebDriverWait(self.driver, self.timeout).until(lambda d: d.execute_script("return document.body !== null"))
                 return
-            except Exception as exc:
+            except WebDriverException as exc:
                 last_error = exc
                 logger.warning("Page load attempt %s/%s failed: %s", attempt, self.max_retries, exc)
                 if attempt < self.max_retries:
@@ -89,7 +90,7 @@ class IMDbSyncScraper:
         logger.info("Fetching URL: %s", url)
         try:
             self._load_page_with_retry(url)
-        except Exception as exc:
+        except RuntimeError as exc:
             logger.error("Could not fetch IMDb page: %s", exc)
             return []
 
