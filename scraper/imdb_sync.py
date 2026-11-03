@@ -82,6 +82,15 @@ except Exception as e:
     logger.warning(f"Initial startup sync failed: {e}")
 
 
+@app.route("/healthz", methods=["GET"])
+def healthz():
+    return jsonify({
+        "status": "ok",
+        "lists": len(ENV_LIST_CACHE),
+        "output_dir": OUTPUT_DIR,
+    })
+
+
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == "POST":

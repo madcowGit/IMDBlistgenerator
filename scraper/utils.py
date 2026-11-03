@@ -17,8 +17,9 @@ logger = logging.getLogger(__name__)
 
 
 class IMDbSyncScraper:
-    def __init__(self, headless: bool = True, timeout: int = 20):
+    def __init__(self, headless: bool = True, timeout: int = 20, max_retries: int = 3):
         self.timeout = timeout
+        self.max_retries = max_retries
         self.options = Options()
         if headless:
             self.options.add_argument("--headless=new")
@@ -85,22 +86,37 @@ class IMDbSyncScraper:
         match = re.search(r"/title/(tt\d+)", href)
         return match.group(1) if match else ""
 
+    def _load_page_with_retry(self, url: str):
+        last_error = None
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                self.driver.get(url)
+                WebDriverWait(self.driver, self.timeout).until(
+                    lambda d: d.execute_script("return document.readyState") == "complete"
+                )
+                WebDriverWait(self.driver, self.timeout).until(
+                    lambda d: d.execute_script("return document.body is not null")
+                )
+                return
+            except Exception as exc:
+                last_error = exc
+                logger.warning("IMDb page load attempt %s/%s failed for %s: %s", attempt, self.max_retries, url, exc)
+                if attempt < self.max_retries:
+                    time.sleep(2 ** attempt)
+
+        raise RuntimeError(f"Failed to load IMDb page after {self.max_retries} attempts: {last_error}")
+
     def fetch_list_items(self, url: str) -> List[Dict[str, Any]]:
         if not url or not url.startswith(("http://", "https://")):
             raise ValueError("A valid IMDb URL is required.")
 
         logger.info("Fetching URL: %s", url)
-        self.driver.get(url)
 
         try:
-            WebDriverWait(self.driver, self.timeout).until(
-                lambda d: d.execute_script("return document.readyState") == "complete"
-            )
-            WebDriverWait(self.driver, self.timeout).until(
-                lambda d: d.execute_script("return document.body is not null")
-            )
+            self._load_page_with_retry(url)
         except Exception as exc:
-            logger.warning("Page did not load fully before timeout: %s", exc)
+            logger.error("Could not fetch IMDb page: %s", exc)
+            return []
 
         self._scroll_to_bottom()
 
