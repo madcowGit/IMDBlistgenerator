@@ -69,7 +69,7 @@ def sync_env_lists():
             save_to_txt_ids(items, os.path.join(OUTPUT_DIR, f"{key}_ids.txt"))
             save_to_csv(items, os.path.join(OUTPUT_DIR, f"{key}.csv"))
             synced.append(key)
-    except Exception:
+    except (RuntimeError, OSError, ValueError):
         logger.exception("Error during environment list sync")
     finally:
         if scraper:
@@ -85,7 +85,7 @@ if interval > 0:
 
 try:
     sync_env_lists()
-except Exception:
+except RuntimeError:
     logger.exception("Initial startup sync failed")
 
 
@@ -134,7 +134,7 @@ def index():
                 url=url,
                 env_lists=ENV_LIST_CACHE,
             )
-        except Exception as exc:
+        except (RuntimeError, ValueError) as exc:
             logger.exception("Error scraping IMDb list")
             flash(f"An error occurred while processing: {exc}", "danger")
             return redirect(url_for("index"))
@@ -169,7 +169,7 @@ def api_scrape():
         scraper = IMDbSyncScraper(headless=True)
         items = scraper.fetch_list_items(url)
         return jsonify({"status": "success", "url": url, "total_items": len(items), "items": items})
-    except Exception as exc:
+    except (RuntimeError, ValueError) as exc:
         logger.exception("REST scrape failed")
         return jsonify({"status": "error", "message": str(exc)}), 500
     finally:
