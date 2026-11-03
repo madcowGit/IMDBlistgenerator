@@ -17,6 +17,10 @@ from webdriver_manager.chrome import ChromeDriverManager
 logger = logging.getLogger(__name__)
 
 
+class IMDbVerificationRequired(RuntimeError):
+    """Raised when IMDb serves a human-verification page instead of list content."""
+
+
 class IMDbSyncScraper:
     def __init__(self, headless: bool = True, timeout: int = 20, max_retries: int = 3):
         self.timeout = timeout
@@ -146,6 +150,23 @@ class IMDbSyncScraper:
 
         self._scroll_to_bottom()
         soup = BeautifulSoup(self.driver.page_source, "html.parser")
+        page_title = self.driver.title or ""
+        body_text = soup.body.get_text(" ", strip=True) if soup.body else ""
+        verification_text = f"{page_title} {body_text}".casefold()
+        if (
+            "human verification" in page_title.casefold()
+            or "confirm you are human" in verification_text
+            or "security check before continuing" in verification_text
+        ):
+            logger.warning(
+                "IMDb served a human-verification page (page_title=%r, current_url=%r)",
+                page_title,
+                self.driver.current_url,
+            )
+            raise IMDbVerificationRequired(
+                "IMDb presented a human-verification page. The list could not be scraped."
+            )
+
         items: List[Dict[str, Any]] = []
         elements = soup.select("li.ipc-metadata-list-summary-item, div.ipc-metadata-list-summary-item, div.lister-item, li.lister-item")
 
@@ -164,14 +185,11 @@ class IMDbSyncScraper:
                         seen_ids.add(imdb_id)
                         items.append({"position": len(items) + 1, "imdb_id": imdb_id, "title": title, "year": "", "rating": "N/A", "imdb_url": f"https://www.imdb.com/title/{imdb_id}/"})
             if not items:
-                page_title = self.driver.title
-                page_url = self.driver.current_url
-                body_text = soup.body.get_text(" ", strip=True)[:300] if soup.body else ""
                 logger.warning(
                     "IMDb page had no extractable titles (page_title=%r, current_url=%r, body_excerpt=%r)",
                     page_title,
-                    page_url,
-                    body_text,
+                    self.driver.current_url,
+                    body_text[:300],
                 )
             logger.info("Extracted %s items using fallback parsing", len(items))
             return items
