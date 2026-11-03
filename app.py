@@ -31,12 +31,22 @@ ENV_LIST_CACHE = {}
 
 
 def is_valid_imdb_url(url: str) -> bool:
+    """Accept IMDb pages useful as title lists, not arbitrary IMDb URLs."""
     if not url:
         return False
-    parsed = urlparse(url)
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return False
     hostname = (parsed.hostname or "").lower()
-    return parsed.scheme in {"http", "https"} and (
-        hostname == "imdb.com" or hostname.endswith(".imdb.com")
+    if parsed.scheme not in {"http", "https"} or hostname not in {"imdb.com", "www.imdb.com"}:
+        return False
+    path = parsed.path.rstrip("/") or "/"
+    return (
+        path.startswith("/list/")
+        or path.startswith("/chart/")
+        or path == "/search/title"
+        or path.startswith("/user/")
     )
 
 
@@ -55,10 +65,14 @@ def sync_env_lists():
         scraper = IMDbSyncScraper(headless=True)
         for idx, url in enumerate(urls, start=1):
             if not is_valid_imdb_url(url):
-                logger.warning("Skipping invalid IMDb URL in IMDB_LIST_URLS: %s", url)
+                logger.warning("Skipping unsupported IMDb list URL in IMDB_LIST_URLS: %s", url)
                 continue
 
-            items = scraper.fetch_list_items(url)
+            try:
+                items = scraper.fetch_list_items(url)
+            except IMDbVerificationRequired:
+                logger.warning("IMDb requested verification for environment list %s; skipping", idx)
+                continue
             if not items:
                 logger.warning("No items extracted for environment list %s (%s)", idx, url)
                 continue
@@ -101,7 +115,7 @@ def index():
         export_format = request.form.get("format", "all")
 
         if not is_valid_imdb_url(url):
-            flash("Please enter a valid IMDb URL.", "danger")
+            flash("Please enter a valid IMDb list, chart, or title-search URL.", "danger")
             return redirect(url_for("index"))
 
         session_id = str(uuid.uuid4())[:8]
@@ -134,6 +148,9 @@ def index():
                 url=url,
                 env_lists=ENV_LIST_CACHE,
             )
+        except IMDbVerificationRequired as exc:
+            flash(str(exc), "warning")
+            return redirect(url_for("index"))
         except (RuntimeError, ValueError) as exc:
             logger.exception("Error scraping IMDb list")
             flash(f"An error occurred while processing: {exc}", "danger")
@@ -162,7 +179,7 @@ def api_scrape():
     data = request.get_json(silent=True) or {}
     url = (data.get("url") or "").strip()
     if not is_valid_imdb_url(url):
-        return jsonify({"status": "error", "message": "Missing or invalid 'url' parameter in request body."}), 400
+        return jsonify({"status": "error", "message": "Missing or unsupported IMDb list URL."}), 400
 
     scraper = None
     try:
@@ -170,7 +187,7 @@ def api_scrape():
         items = scraper.fetch_list_items(url)
         return jsonify({"status": "success", "url": url, "total_items": len(items), "items": items})
     except IMDbVerificationRequired as exc:
-        logger.warning("REST scrape blocked by IMDb verification: %s", exc)
+        logger.warning("REST scrape stopped because IMDb requested verification: %s", exc)
         return jsonify({
             "status": "error",
             "code": "imdb_verification_required",
