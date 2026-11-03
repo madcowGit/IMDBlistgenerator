@@ -29,7 +29,7 @@ jobs:
 
       - name: Test Scraper API Endpoint
         run: |
-          RESPONSE=$(curl -s "http://localhost:8000/api/scrape?url=https://www.imdb.com/chart/top/")
+          RESPONSE=$(curl -s "http://localhost:8000/api/scrape?url=https://www.imdb.com/list/ls569954785/")
           echo "API Response:"
           echo "$RESPONSE" | head -c 1000
           
