@@ -42,12 +42,7 @@ def is_valid_imdb_url(url: str) -> bool:
     if parsed.scheme not in {"http", "https"} or hostname not in {"imdb.com", "www.imdb.com"}:
         return False
     path = parsed.path.rstrip("/") or "/"
-    return (
-        path.startswith("/list/")
-        or path.startswith("/chart/")
-        or path == "/search/title"
-        or path.startswith("/user/")
-    )
+    return path.startswith(("/list/", "/chart/", "/user/")) or path == "/search/title"
 
 
 def sync_env_lists():
