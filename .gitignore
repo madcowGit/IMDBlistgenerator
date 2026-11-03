@@ -159,6 +159,10 @@ ENV/
 env.bak/
 venv.bak/
 
+# Local SeleniumBase browser state and generated scraper output
+downloaded_files/
+stevenlu_movies.json
+
 # Conda environments
 conda-meta/
 

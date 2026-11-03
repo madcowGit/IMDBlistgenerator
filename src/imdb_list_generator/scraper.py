@@ -1,9 +1,11 @@
 import json
 import logging
 import re
+from typing import TypedDict
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from selenium.common.exceptions import TimeoutException
+from selenium.webdriver.remote.webelement import WebElement
 from seleniumbase import SB
 
 logger = logging.getLogger(__name__)
@@ -18,7 +20,15 @@ YEAR_SELECTOR = (
 )
 
 
-def _validate_imdb_url(url):
+class Movie(TypedDict):
+    title: str
+    imdb_id: str
+    poster_url: str | None
+    year: int | None
+    rating: float | None
+
+
+def _validate_imdb_url(url: str) -> None:
     parsed_url = urlsplit(url)
     if parsed_url.scheme not in {"http", "https"} or parsed_url.hostname not in {
         "imdb.com",
@@ -32,7 +42,7 @@ def _validate_imdb_url(url):
         raise ValueError("URL must point to an IMDb list or user watchlist")
 
 
-def _url_for_page(url, page_number):
+def _url_for_page(url: str, page_number: int) -> str:
     parsed_url = urlsplit(url)
     query = [
         (key, value)
@@ -52,7 +62,7 @@ def _url_for_page(url, page_number):
     )
 
 
-def parse_movie_element(element):
+def parse_movie_element(element: WebElement) -> Movie | None:
     """Parse an IMDb item into Steven Lu's JSON layout."""
     title_elements = element.find_elements("css selector", TITLE_SELECTOR)
     title = None
@@ -75,10 +85,9 @@ def parse_movie_element(element):
     image_elements = element.find_elements("css selector", "img.ipc-image")
     poster_url = None
     if image_elements:
-        poster_url = (
-            image_elements[0].get_attribute("src")
-            or image_elements[0].get_attribute("data-src")
-        )
+        poster_url = image_elements[0].get_attribute("src") or image_elements[
+            0
+        ].get_attribute("data-src")
 
     year = None
     for metadata in element.find_elements("css selector", YEAR_SELECTOR):
@@ -107,10 +116,10 @@ def parse_movie_element(element):
     }
 
 
-def scrape_imdb_list(url):
+def scrape_imdb_list(url: str) -> str:
     _validate_imdb_url(url)
-    movies = []
-    seen_imdb_ids = set()
+    movies: list[Movie] = []
+    seen_imdb_ids: set[str] = set()
 
     with SB(uc=True, headless=False) as sb:
         sb.uc_open_with_reconnect(_url_for_page(url, 1), reconnect_time=4)
@@ -122,9 +131,7 @@ def scrape_imdb_list(url):
                 "and that IMDb did not show a sign-in or verification page."
             ) from exc
 
-        page_options = sb.driver.find_elements(
-            "css selector", "#listPagination option"
-        )
+        page_options = sb.driver.find_elements("css selector", "#listPagination option")
         page_values = [
             int(value)
             for option in page_options
@@ -164,7 +171,7 @@ def scrape_imdb_list(url):
                 )
 
             items = sb.find_elements(ITEM_SELECTOR)
-            page_movies = []
+            page_movies: list[Movie] = []
             skipped_items = 0
             for item in items:
                 movie_info = parse_movie_element(item)

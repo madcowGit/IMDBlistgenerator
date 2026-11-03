@@ -2,13 +2,10 @@ import json
 import re
 import unittest
 
-from imdb_scraper import scrape_imdb_list
-
+from imdb_list_generator.scraper import scrape_imdb_list
 
 IMDB_LIST_URL = "https://www.imdb.com/list/ls569954785/"
-IMDB_WATCHLIST_URL = (
-    "https://www.imdb.com/user/p.ug53yeky7gegylcric634z6yta/watchlist"
-)
+IMDB_WATCHLIST_URL = "https://www.imdb.com/user/p.ug53yeky7gegylcric634z6yta/watchlist"
 EXPECTED_MOVIE_FIELDS = {
     "title",
     "imdb_id",
@@ -33,15 +30,11 @@ class IMDbScraperIntegrationTests(unittest.TestCase):
                 self.assertTrue(movie["title"].strip())
                 self.assertRegex(movie["imdb_id"], re.compile(r"^tt\d+$"))
                 self.assertTrue(
-                    movie["poster_url"] is None
-                    or isinstance(movie["poster_url"], str)
+                    movie["poster_url"] is None or isinstance(movie["poster_url"], str)
                 )
+                self.assertTrue(movie["year"] is None or isinstance(movie["year"], int))
                 self.assertTrue(
-                    movie["year"] is None or isinstance(movie["year"], int)
-                )
-                self.assertTrue(
-                    movie["rating"] is None
-                    or isinstance(movie["rating"], (int, float))
+                    movie["rating"] is None or isinstance(movie["rating"], (int, float))
                 )
 
     def test_scrapes_at_least_260_watchlist_entries(self):

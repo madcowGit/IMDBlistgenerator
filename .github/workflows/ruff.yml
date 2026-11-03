@@ -21,15 +21,9 @@ jobs:
           python-version: "3.11"
 
       - name: Install Ruff
-        run: pip install ruff
+        run: python -m pip install -e ".[dev]"
 
-      - name: Automatically fix lint issues
-        run: ruff check --fix .
-
-      - name: Automatically format files
-        run: ruff format .
-
-      - name: Check for remaining lint issues
+      - name: Lint
         run: ruff check .
 
       - name: Check formatting
