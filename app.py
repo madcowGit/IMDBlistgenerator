@@ -15,7 +15,7 @@ from flask import (
 )
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from scraper.imdb_sync import IMDbSyncScraper
+from scraper.imdb_sync import IMDbSyncScraper, IMDbVerificationRequired
 from scraper.utils import save_to_csv, save_to_json, save_to_txt_ids
 
 logging.basicConfig(level=logging.INFO)
@@ -169,6 +169,13 @@ def api_scrape():
         scraper = IMDbSyncScraper(headless=True)
         items = scraper.fetch_list_items(url)
         return jsonify({"status": "success", "url": url, "total_items": len(items), "items": items})
+    except IMDbVerificationRequired as exc:
+        logger.warning("REST scrape blocked by IMDb verification: %s", exc)
+        return jsonify({
+            "status": "error",
+            "code": "imdb_verification_required",
+            "message": str(exc),
+        }), 503
     except (RuntimeError, ValueError) as exc:
         logger.exception("REST scrape failed")
         return jsonify({"status": "error", "message": str(exc)}), 500
