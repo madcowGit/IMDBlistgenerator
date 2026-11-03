@@ -1,9 +1,18 @@
+import logging
 import os
 import uuid
-import logging
 from urllib.parse import urlparse
 
-from flask import Flask, render_template, request, jsonify, send_from_directory, flash, redirect, url_for
+from flask import (
+    Flask,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    send_from_directory,
+    url_for,
+)
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from scraper.imdb_sync import IMDbSyncScraper
@@ -26,7 +35,9 @@ def is_valid_imdb_url(url: str) -> bool:
         return False
     parsed = urlparse(url)
     hostname = (parsed.hostname or "").lower()
-    return parsed.scheme in {"http", "https"} and (hostname == "imdb.com" or hostname.endswith(".imdb.com"))
+    return parsed.scheme in {"http", "https"} and (
+        hostname == "imdb.com" or hostname.endswith(".imdb.com")
+    )
 
 
 def sync_env_lists():
@@ -116,7 +127,13 @@ def index():
                 save_to_txt_ids(items, os.path.join(OUTPUT_DIR, filename))
                 files_created["txt"] = filename
 
-            return render_template("index.html", items=items, files=files_created, url=url, env_lists=ENV_LIST_CACHE)
+            return render_template(
+                "index.html",
+                items=items,
+                files=files_created,
+                url=url,
+                env_lists=ENV_LIST_CACHE,
+            )
         except Exception as exc:
             logger.exception("Error scraping IMDb list")
             flash(f"An error occurred while processing: {exc}", "danger")
