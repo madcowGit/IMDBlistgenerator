@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import re
@@ -6,9 +7,10 @@ from typing import Any, Dict, List
 
 from bs4 import BeautifulSoup
 from selenium import webdriver
-from selenium.common.exceptions import WebDriverException
+from selenium.common.exceptions import TimeoutException, WebDriverException
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from webdriver_manager.chrome import ChromeDriverManager
 
@@ -69,6 +71,46 @@ class IMDbSyncScraper:
         match = re.search(r"/title/(tt\d+)", href or "")
         return match.group(1) if match else ""
 
+    @classmethod
+    def _extract_json_ld_items(cls, soup: BeautifulSoup) -> List[Dict[str, Any]]:
+        """Extract movie entries from IMDb's structured-data scripts."""
+        items: List[Dict[str, Any]] = []
+        seen_ids = set()
+
+        def visit(value):
+            if isinstance(value, dict):
+                entry = value.get("item", value)
+                if isinstance(entry, dict):
+                    href = entry.get("url") or entry.get("@id") or value.get("url") or value.get("@id") or ""
+                    title = entry.get("name") or value.get("name") or ""
+                else:
+                    href = entry or value.get("url") or value.get("@id") or ""
+                    title = value.get("name") or ""
+                imdb_id = cls._extract_imdb_id(str(href))
+                title = cls._clean_title(str(title))
+                if imdb_id and title and imdb_id not in seen_ids:
+                    seen_ids.add(imdb_id)
+                    items.append({
+                        "position": len(items) + 1,
+                        "imdb_id": imdb_id,
+                        "title": title,
+                        "year": "",
+                        "rating": "N/A",
+                        "imdb_url": f"https://www.imdb.com/title/{imdb_id}/",
+                    })
+                for nested_value in value.values():
+                    visit(nested_value)
+            elif isinstance(value, list):
+                for nested_value in value:
+                    visit(nested_value)
+
+        for script in soup.select('script[type="application/ld+json"]'):
+            try:
+                visit(json.loads(script.string or script.get_text()))
+            except (json.JSONDecodeError, TypeError):
+                continue
+        return items
+
     def _load_page_with_retry(self, url: str):
         last_error = None
         for attempt in range(1, self.max_retries + 1):
@@ -94,17 +136,43 @@ class IMDbSyncScraper:
             logger.error("Could not fetch IMDb page: %s", exc)
             return []
 
+        # IMDb hydrates list content after the initial document load.
+        try:
+            WebDriverWait(self.driver, min(self.timeout, 8)).until(
+                lambda driver: driver.find_elements(By.CSS_SELECTOR, "a[href*='/title/']")
+            )
+        except TimeoutException:
+            logger.debug("No IMDb title links appeared before the content wait expired")
+
         self._scroll_to_bottom()
         soup = BeautifulSoup(self.driver.page_source, "html.parser")
         items: List[Dict[str, Any]] = []
         elements = soup.select("li.ipc-metadata-list-summary-item, div.ipc-metadata-list-summary-item, div.lister-item, li.lister-item")
 
         if not elements:
-            for anchor in soup.select("a[href*='/title/']"):
-                imdb_id = self._extract_imdb_id(anchor.get("href", ""))
-                title = self._clean_title(anchor.get_text(" ", strip=True))
-                if imdb_id and title:
-                    items.append({"position": len(items) + 1, "imdb_id": imdb_id, "title": title, "year": "", "rating": "N/A", "imdb_url": f"https://www.imdb.com/title/{imdb_id}/"})
+            items = self._extract_json_ld_items(soup)
+            if not items:
+                seen_ids = set()
+                for anchor in soup.select("a[href*='/title/']"):
+                    imdb_id = self._extract_imdb_id(anchor.get("href", ""))
+                    title = self._clean_title(
+                        anchor.get_text(" ", strip=True)
+                        or anchor.get("aria-label", "")
+                        or anchor.get("title", "")
+                    )
+                    if imdb_id and title and imdb_id not in seen_ids:
+                        seen_ids.add(imdb_id)
+                        items.append({"position": len(items) + 1, "imdb_id": imdb_id, "title": title, "year": "", "rating": "N/A", "imdb_url": f"https://www.imdb.com/title/{imdb_id}/"})
+            if not items:
+                page_title = self.driver.title
+                page_url = self.driver.current_url
+                body_text = soup.body.get_text(" ", strip=True)[:300] if soup.body else ""
+                logger.warning(
+                    "IMDb page had no extractable titles (page_title=%r, current_url=%r, body_excerpt=%r)",
+                    page_title,
+                    page_url,
+                    body_text,
+                )
             logger.info("Extracted %s items using fallback parsing", len(items))
             return items
 
@@ -113,7 +181,11 @@ class IMDbSyncScraper:
             if not title_el:
                 continue
             imdb_id = self._extract_imdb_id(title_el.get("href", ""))
-            title = self._clean_title(title_el.get_text(" ", strip=True))
+            title = self._clean_title(
+                title_el.get_text(" ", strip=True)
+                or title_el.get("aria-label", "")
+                or title_el.get("title", "")
+            )
             if not imdb_id or not title:
                 continue
             year_el = element.select_one("span.sc-b15896e3-6, span.lister-item-year, span.ipc-title-meta")
