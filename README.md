@@ -88,6 +88,24 @@ export FLASK_SECRET_KEY=change-me
 python app.py
 ```
 
+in powershell:
+```powershell
+# Create virtual environment
+python -m venv .venv
+
+# Activate virtual environment
+.\.venv\Scripts\Activate.ps1
+
+# Install dependencies
+python -m pip install -r requirements.txt
+
+# Set environment variable for this PowerShell session
+$env:FLASK_SECRET_KEY = "change-me"
+
+# Run the Flask application
+python app.py
+```
+
 Then open `http://localhost:5000`.
 
 ## Notes
