@@ -1,199 +1,137 @@
-import os
-import uuid
 import logging
-from urllib.parse import urlparse
+import os
+import re
+import time
+from typing import Any, Dict, List
 
-from flask import Flask, render_template, request, jsonify, send_from_directory, flash, redirect, url_for
-from apscheduler.schedulers.background import BackgroundScheduler
+from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.support.ui import WebDriverWait
+from webdriver_manager.chrome import ChromeDriverManager
 
-from scraper.imdb_sync import IMDbSyncScraper
-from scraper.utils import save_to_csv, save_to_json, save_to_txt_ids
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("app")
-
-app = Flask(__name__)
-app.secret_key = os.getenv("FLASK_SECRET_KEY", "super-secret-key-change-this")
-
-OUTPUT_DIR = os.path.join(app.root_path, "output")
-os.makedirs(OUTPUT_DIR, exist_ok=True)
-
-ENV_LIST_CACHE = {}
+logger = logging.getLogger(__name__)
 
 
-def is_valid_imdb_url(url: str) -> bool:
-    if not url:
-        return False
-    parsed = urlparse(url)
-    return bool(parsed.scheme in {"http", "https"} and parsed.netloc and "imdb.com" in parsed.netloc)
+class IMDbSyncScraper:
+    def __init__(self, headless: bool = True, timeout: int = 20, max_retries: int = 3):
+        self.timeout = timeout
+        self.max_retries = max_retries
+        self.driver = None
+        options = Options()
+        if headless:
+            options.add_argument("--headless=new")
+        options.add_argument("--window-size=1920,1080")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--disable-blink-features=AutomationControlled")
+        options.add_argument("--disable-features=Translate,OptimizationHints")
+        options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
+        chrome_bin = os.getenv("CHROME_BIN")
+        driver_path = os.getenv("CHROMEDRIVER_PATH")
+        if chrome_bin:
+            options.binary_location = chrome_bin
 
-def sync_env_lists():
-    """Syncs IMDb lists specified in IMDB_LIST_URLS environment variable."""
-    urls_raw = os.getenv("IMDB_LIST_URLS", "")
-    if not urls_raw:
-        return []
-
-    urls = [u.strip() for u in urls_raw.split(",") if u.strip()]
-    logger.info(f"Starting scheduled sync for {len(urls)} environment list(s)...")
-
-    scraper = None
-    synced = []
-    try:
-        scraper = IMDbSyncScraper(headless=True)
-        for idx, url in enumerate(urls, start=1):
-            if not is_valid_imdb_url(url):
-                logger.warning("Skipping invalid IMDb URL in IMDB_LIST_URLS: %s", url)
-                continue
-
-            items = scraper.fetch_list_items(url)
-            if not items:
-                logger.warning("No items extracted for environment list %s (%s)", idx, url)
-                continue
-
-            key = f"list_{idx}"
-            ENV_LIST_CACHE[key] = {
-                "url": url,
-                "count": len(items),
-                "items": items,
-            }
-            save_to_json(items, os.path.join(OUTPUT_DIR, f"{key}.json"))
-            save_to_txt_ids(items, os.path.join(OUTPUT_DIR, f"{key}_ids.txt"))
-            save_to_csv(items, os.path.join(OUTPUT_DIR, f"{key}.csv"))
-            synced.append(key)
-    except Exception as e:
-        logger.exception("Error during env list sync: %s", e)
-    finally:
-        if scraper:
-            scraper.close()
-
-    return synced
-
-
-interval = int(os.getenv("AUTO_SYNC_INTERVAL", "3600"))
-scheduler = BackgroundScheduler()
-if interval > 0:
-    scheduler.add_job(func=sync_env_lists, trigger="interval", seconds=interval)
-    scheduler.start()
-
-try:
-    sync_env_lists()
-except Exception as e:
-    logger.warning(f"Initial startup sync failed: {e}")
-
-
-@app.route("/healthz", methods=["GET"])
-def healthz():
-    return jsonify({
-        "status": "ok",
-        "lists": len(ENV_LIST_CACHE),
-        "output_dir": OUTPUT_DIR,
-    })
-
-
-@app.route("/", methods=["GET", "POST"])
-def index():
-    if request.method == "POST":
-        url = request.form.get("url", "").strip()
-        export_format = request.form.get("format", "all")
-
-        if not is_valid_imdb_url(url):
-            flash("Please enter a valid IMDb URL.", "danger")
-            return redirect(url_for("index"))
-
-        session_id = str(uuid.uuid4())[:8]
-
-        scraper = None
         try:
-            scraper = IMDbSyncScraper(headless=True)
-            items = scraper.fetch_list_items(url)
+            service = Service(executable_path=driver_path) if driver_path and os.path.exists(driver_path) else Service(ChromeDriverManager().install())
+            self.driver = webdriver.Chrome(service=service, options=options)
+            self.driver.set_page_load_timeout(self.timeout + 10)
+        except Exception as exc:
+            logger.exception("Failed to initialize Chromium")
+            raise RuntimeError(f"Unable to start Chrome/Chromium: {exc}") from exc
 
-            if not items:
-                flash("No items could be extracted from the URL provided.", "warning")
-                return redirect(url_for("index"))
+    def _scroll_to_bottom(self):
+        try:
+            last_height = self.driver.execute_script("return document.body.scrollHeight")
+        except Exception:
+            return
+        for _ in range(10):
+            self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            time.sleep(1.2)
+            try:
+                new_height = self.driver.execute_script("return document.body.scrollHeight")
+            except Exception:
+                break
+            if new_height == last_height:
+                break
+            last_height = new_height
 
-            files_created = {}
-            if export_format in ["csv", "all"]:
-                filename = f"imdb_{session_id}.csv"
-                save_to_csv(items, os.path.join(OUTPUT_DIR, filename))
-                files_created["csv"] = filename
+    @staticmethod
+    def _clean_title(title: str) -> str:
+        return re.sub(r"^\d+[\s.]\s*", "", title.strip()) if title else ""
 
-            if export_format in ["json", "all"]:
-                filename = f"imdb_{session_id}.json"
-                save_to_json(items, os.path.join(OUTPUT_DIR, filename))
-                files_created["json"] = filename
+    @staticmethod
+    def _extract_imdb_id(href: str) -> str:
+        match = re.search(r"/title/(tt\d+)", href or "")
+        return match.group(1) if match else ""
 
-            if export_format in ["txt", "all"]:
-                filename = f"imdb_{session_id}_ids.txt"
-                save_to_txt_ids(items, os.path.join(OUTPUT_DIR, filename))
-                files_created["txt"] = filename
+    def _load_page_with_retry(self, url: str):
+        last_error = None
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                self.driver.get(url)
+                WebDriverWait(self.driver, self.timeout).until(lambda d: d.execute_script("return document.readyState") == "complete")
+                WebDriverWait(self.driver, self.timeout).until(lambda d: d.execute_script("return document.body !== null"))
+                return
+            except Exception as exc:
+                last_error = exc
+                logger.warning("Page load attempt %s/%s failed: %s", attempt, self.max_retries, exc)
+                if attempt < self.max_retries:
+                    time.sleep(2 ** attempt)
+        raise RuntimeError(f"Failed to load IMDb page after {self.max_retries} attempts: {last_error}")
 
-            return render_template("index.html", items=items, files=files_created, url=url, env_lists=ENV_LIST_CACHE)
+    def fetch_list_items(self, url: str) -> List[Dict[str, Any]]:
+        if not url or not url.startswith(("http://", "https://")):
+            raise ValueError("A valid IMDb URL is required.")
+        logger.info("Fetching URL: %s", url)
+        try:
+            self._load_page_with_retry(url)
+        except Exception as exc:
+            logger.error("Could not fetch IMDb page: %s", exc)
+            return []
 
-        except Exception as e:
-            logger.exception("Error scraping IMDb list: %s", e)
-            flash(f"An error occurred while processing: {str(e)}", "danger")
-            return redirect(url_for("index"))
-        finally:
-            if scraper:
-                scraper.close()
+        self._scroll_to_bottom()
+        soup = BeautifulSoup(self.driver.page_source, "html.parser")
+        items: List[Dict[str, Any]] = []
+        elements = soup.select("li.ipc-metadata-list-summary-item, div.ipc-metadata-list-summary-item, div.lister-item, li.lister-item")
 
-    return render_template("index.html", items=None, files=None, env_lists=ENV_LIST_CACHE)
+        if not elements:
+            for anchor in soup.select("a[href*='/title/']"):
+                imdb_id = self._extract_imdb_id(anchor.get("href", ""))
+                title = self._clean_title(anchor.get_text(" ", strip=True))
+                if imdb_id and title:
+                    items.append({"position": len(items) + 1, "imdb_id": imdb_id, "title": title, "year": "", "rating": "N/A", "imdb_url": f"https://www.imdb.com/title/{imdb_id}/"})
+            logger.info("Extracted %s items using fallback parsing", len(items))
+            return items
 
+        for element in elements:
+            title_el = element.select_one("a[href*='/title/']")
+            if not title_el:
+                continue
+            imdb_id = self._extract_imdb_id(title_el.get("href", ""))
+            title = self._clean_title(title_el.get_text(" ", strip=True))
+            if not imdb_id or not title:
+                continue
+            year_el = element.select_one("span.sc-b15896e3-6, span.lister-item-year, span.ipc-title-meta")
+            rating_el = element.select_one("span.ipc-rating-star--rating, span.value, span[aria-label*='rating']")
+            items.append({
+                "position": len(items) + 1,
+                "imdb_id": imdb_id,
+                "title": title,
+                "year": year_el.get_text(" ", strip=True) if year_el else "",
+                "rating": rating_el.get_text(" ", strip=True) if rating_el else "N/A",
+                "imdb_url": f"https://www.imdb.com/title/{imdb_id}/",
+            })
+        logger.info("Successfully scraped %s items", len(items))
+        return items
 
-@app.route("/api/lists", methods=["GET"])
-def api_get_all_lists():
-    return jsonify({
-        "status": "success",
-        "total_lists": len(ENV_LIST_CACHE),
-        "lists": ENV_LIST_CACHE,
-    })
-
-
-@app.route("/api/lists/<list_id>", methods=["GET"])
-def api_get_list(list_id):
-    if list_id not in ENV_LIST_CACHE:
-        return jsonify({"status": "error", "message": f"List '{list_id}' not found."}), 404
-    return jsonify({
-        "status": "success",
-        "list_id": list_id,
-        "data": ENV_LIST_CACHE[list_id],
-    })
-
-
-@app.route("/api/scrape", methods=["POST"])
-def api_scrape():
-    data = request.get_json() or {}
-    url = (data.get("url") or "").strip()
-    if not is_valid_imdb_url(url):
-        return jsonify({"status": "error", "message": "Missing or invalid 'url' parameter in request body."}), 400
-
-    scraper = None
-    try:
-        scraper = IMDbSyncScraper(headless=True)
-        items = scraper.fetch_list_items(url)
-        return jsonify({
-            "status": "success",
-            "url": url,
-            "total_items": len(items),
-            "items": items,
-        })
-    except Exception as e:
-        logger.exception("REST scrape failed: %s", e)
-        return jsonify({"status": "error", "message": str(e)}), 500
-    finally:
-        if scraper:
-            scraper.close()
-
-
-@app.route("/download/<filename>")
-def download_file(filename):
-    safe_name = os.path.basename(filename)
-    if safe_name != filename:
-        return "Invalid file name.", 400
-    return send_from_directory(OUTPUT_DIR, safe_name, as_attachment=True)
-
-
-if __name__ == "__main__":
-    port = int(os.getenv("PORT", "5000"))
-    app.run(host="0.0.0.0", port=port)
+    def close(self):
+        if self.driver:
+            try:
+                self.driver.quit()
+            except Exception:
+                logger.debug("Error closing browser", exc_info=True)
+            self.driver = None
