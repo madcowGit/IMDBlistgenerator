@@ -9,6 +9,10 @@ A Dockerized FastAPI application using `undetected-chromedriver` and `Xvfb` to s
 - Fast REST API interface powered by FastAPI and Uvicorn.
 - Automated testing workflow via GitHub Actions.
 
+## Development with a Dev Container
+
+Open the repository in VS Code and choose **Reopen in Container** (or open it in GitHub Codespaces). The container builds from the project Dockerfile, installs the Python and Chrome dependencies, and starts the API. Port `8000` is forwarded automatically; the API docs are available at `http://localhost:8000/docs`.
+
 ## Output Schema (Steven Lu Format)
 
 ```json

@@ -9,7 +9,6 @@ RUN apt-get update && apt-get install -y \
     xvfb \
     libglib2.0-0 \
     libnss3 \
-    libgconf-2-4 \
     libfontconfig1 \
     libx11-6 \
     libxcomposite1 \

@@ -1,0 +1,27 @@
+{
+  "name": "IMDb List Generator",
+  "build": {
+    "dockerfile": "../Dockerfile",
+    "context": ".."
+  },
+  "workspaceFolder": "/app",
+  "overrideCommand": false,
+  "forwardPorts": [8000],
+  "portsAttributes": {
+    "8000": {
+      "label": "IMDb API",
+      "onAutoForward": "notify"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python"
+      }
+    }
+  }
+}
