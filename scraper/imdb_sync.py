@@ -1,107 +1,190 @@
 import os
-import time
+import uuid
 import logging
-from typing import List, Dict, Any
-from bs4 import BeautifulSoup
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
+from urllib.parse import urlparse
 
-logger = logging.getLogger(__name__)
+from flask import Flask, render_template, request, jsonify, send_from_directory, flash, redirect, url_for
+from apscheduler.schedulers.background import BackgroundScheduler
 
-class IMDbSyncScraper:
-    def __init__(self, headless: bool = True, timeout: int = 15):
-        self.timeout = timeout
-        self.options = Options()
-        if headless:
-            self.options.add_argument("--headless=new")
-        self.options.add_argument("--no-sandbox")
-        self.options.add_argument("--disable-dev-shm-usage")
-        self.options.add_argument("--disable-gpu")
-        self.options.add_argument("--disable-blink-features=AutomationControlled")
-        self.options.add_argument(
-            "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        )
-        
-        chrome_bin = os.getenv("CHROME_BIN")
-        chromedriver_path = os.getenv("CHROMEDRIVER_PATH")
+from scraper.imdb_sync import IMDbSyncScraper
+from scraper.utils import save_to_csv, save_to_json, save_to_txt_ids
 
-        if chrome_bin:
-            self.options.binary_location = chrome_bin
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("app")
 
-        if chromedriver_path and os.path.exists(chromedriver_path):
-            service = Service(executable_path=chromedriver_path)
-        else:
-            service = Service(ChromeDriverManager().install())
+app = Flask(__name__)
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "super-secret-key-change-this")
 
-        self.driver = webdriver.Chrome(service=service, options=self.options)
+OUTPUT_DIR = os.path.join(app.root_path, "output")
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    def _scroll_to_bottom(self):
-        last_height = self.driver.execute_script("return document.body.scrollHeight")
-        while True:
-            self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-            time.sleep(1.2)
-            new_height = self.driver.execute_script("return document.body.scrollHeight")
-            if new_height == last_height:
-                break
-            last_height = new_height
+ENV_LIST_CACHE = {}
 
-    def fetch_list_items(self, url: str) -> List[Dict[str, Any]]:
-        logger.info(f"Fetching URL: {url}")
-        self.driver.get(url)
-        
-        try:
-            WebDriverWait(self.driver, self.timeout).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "main"))
-            )
-        except Exception as e:
-            logger.error(f"Timeout waiting for page content: {e}")
-            return []
 
-        self._scroll_to_bottom()
+def is_valid_imdb_url(url: str) -> bool:
+    if not url:
+        return False
+    parsed = urlparse(url)
+    return bool(parsed.scheme in {"http", "https"} and parsed.netloc and "imdb.com" in parsed.netloc)
 
-        soup = BeautifulSoup(self.driver.page_source, "html.parser")
-        items = []
 
-        list_elements = soup.select("li.ipc-metadata-list-summary-item, div.lister-item")
+def sync_env_lists():
+    """Syncs IMDb lists specified in IMDB_LIST_URLS environment variable."""
+    urls_raw = os.getenv("IMDB_LIST_URLS", "")
+    if not urls_raw:
+        return []
 
-        for idx, el in enumerate(list_elements, start=1):
-            title_el = el.select_one("a.ipc-title-link-wrapper, h3.lister-item-header a")
-            if not title_el:
+    urls = [u.strip() for u in urls_raw.split(",") if u.strip()]
+    logger.info(f"Starting scheduled sync for {len(urls)} environment list(s)...")
+
+    scraper = None
+    synced = []
+    try:
+        scraper = IMDbSyncScraper(headless=True)
+        for idx, url in enumerate(urls, start=1):
+            if not is_valid_imdb_url(url):
+                logger.warning("Skipping invalid IMDb URL in IMDB_LIST_URLS: %s", url)
                 continue
 
-            href = title_el.get("href", "")
-            imdb_id = ""
-            if "/title/" in href:
-                imdb_id = href.split("/title/")[1].split("/")[0]
+            items = scraper.fetch_list_items(url)
+            if not items:
+                logger.warning("No items extracted for environment list %s (%s)", idx, url)
+                continue
 
-            title_text = title_el.get_text(strip=True)
-            if title_text and title_text[0].isdigit() and "." in title_text:
-                title_text = title_text.split(".", 1)[1].strip()
+            key = f"list_{idx}"
+            ENV_LIST_CACHE[key] = {
+                "url": url,
+                "count": len(items),
+                "items": items,
+            }
+            save_to_json(items, os.path.join(OUTPUT_DIR, f"{key}.json"))
+            save_to_txt_ids(items, os.path.join(OUTPUT_DIR, f"{key}_ids.txt"))
+            save_to_csv(items, os.path.join(OUTPUT_DIR, f"{key}.csv"))
+            synced.append(key)
+    except Exception as e:
+        logger.exception("Error during env list sync: %s", e)
+    finally:
+        if scraper:
+            scraper.close()
 
-            year_el = el.select_one("span.sc-b15896e3-6, span.lister-item-year")
-            year = year_el.get_text(strip=True) if year_el else ""
+    return synced
 
-            rating_el = el.select_one("span.ipc-rating-star--rating, span.value")
-            rating = rating_el.get_text(strip=True) if rating_el else "N/A"
 
-            items.append({
-                "position": idx,
-                "imdb_id": imdb_id,
-                "title": title_text,
-                "year": year,
-                "rating": rating,
-                "imdb_url": f"https://www.imdb.com/title/{imdb_id}/" if imdb_id else ""
-            })
+interval = int(os.getenv("AUTO_SYNC_INTERVAL", "3600"))
+scheduler = BackgroundScheduler()
+if interval > 0:
+    scheduler.add_job(func=sync_env_lists, trigger="interval", seconds=interval)
+    scheduler.start()
 
-        logger.info(f"Successfully scraped {len(items)} items.")
-        return items
+try:
+    sync_env_lists()
+except Exception as e:
+    logger.warning(f"Initial startup sync failed: {e}")
 
-    def close(self):
-        if self.driver:
-            self.driver.quit()
+
+@app.route("/", methods=["GET", "POST"])
+def index():
+    if request.method == "POST":
+        url = request.form.get("url", "").strip()
+        export_format = request.form.get("format", "all")
+
+        if not is_valid_imdb_url(url):
+            flash("Please enter a valid IMDb URL.", "danger")
+            return redirect(url_for("index"))
+
+        session_id = str(uuid.uuid4())[:8]
+
+        scraper = None
+        try:
+            scraper = IMDbSyncScraper(headless=True)
+            items = scraper.fetch_list_items(url)
+
+            if not items:
+                flash("No items could be extracted from the URL provided.", "warning")
+                return redirect(url_for("index"))
+
+            files_created = {}
+            if export_format in ["csv", "all"]:
+                filename = f"imdb_{session_id}.csv"
+                save_to_csv(items, os.path.join(OUTPUT_DIR, filename))
+                files_created["csv"] = filename
+
+            if export_format in ["json", "all"]:
+                filename = f"imdb_{session_id}.json"
+                save_to_json(items, os.path.join(OUTPUT_DIR, filename))
+                files_created["json"] = filename
+
+            if export_format in ["txt", "all"]:
+                filename = f"imdb_{session_id}_ids.txt"
+                save_to_txt_ids(items, os.path.join(OUTPUT_DIR, filename))
+                files_created["txt"] = filename
+
+            return render_template("index.html", items=items, files=files_created, url=url, env_lists=ENV_LIST_CACHE)
+
+        except Exception as e:
+            logger.exception("Error scraping IMDb list: %s", e)
+            flash(f"An error occurred while processing: {str(e)}", "danger")
+            return redirect(url_for("index"))
+        finally:
+            if scraper:
+                scraper.close()
+
+    return render_template("index.html", items=None, files=None, env_lists=ENV_LIST_CACHE)
+
+
+@app.route("/api/lists", methods=["GET"])
+def api_get_all_lists():
+    return jsonify({
+        "status": "success",
+        "total_lists": len(ENV_LIST_CACHE),
+        "lists": ENV_LIST_CACHE,
+    })
+
+
+@app.route("/api/lists/<list_id>", methods=["GET"])
+def api_get_list(list_id):
+    if list_id not in ENV_LIST_CACHE:
+        return jsonify({"status": "error", "message": f"List '{list_id}' not found."}), 404
+    return jsonify({
+        "status": "success",
+        "list_id": list_id,
+        "data": ENV_LIST_CACHE[list_id],
+    })
+
+
+@app.route("/api/scrape", methods=["POST"])
+def api_scrape():
+    data = request.get_json() or {}
+    url = (data.get("url") or "").strip()
+    if not is_valid_imdb_url(url):
+        return jsonify({"status": "error", "message": "Missing or invalid 'url' parameter in request body."}), 400
+
+    scraper = None
+    try:
+        scraper = IMDbSyncScraper(headless=True)
+        items = scraper.fetch_list_items(url)
+        return jsonify({
+            "status": "success",
+            "url": url,
+            "total_items": len(items),
+            "items": items,
+        })
+    except Exception as e:
+        logger.exception("REST scrape failed: %s", e)
+        return jsonify({"status": "error", "message": str(e)}), 500
+    finally:
+        if scraper:
+            scraper.close()
+
+
+@app.route("/download/<filename>")
+def download_file(filename):
+    safe_name = os.path.basename(filename)
+    if safe_name != filename:
+        return "Invalid file name.", 400
+    return send_from_directory(OUTPUT_DIR, safe_name, as_attachment=True)
+
+
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", "5000"))
+    app.run(host="0.0.0.0", port=port)
