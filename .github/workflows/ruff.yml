@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   lint:
-    name: Lint and format check
+    name: Lint and format
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -23,7 +23,13 @@ jobs:
       - name: Install Ruff
         run: pip install ruff
 
-      - name: Lint
+      - name: Automatically fix lint issues
+        run: ruff check --fix .
+
+      - name: Automatically format files
+        run: ruff format .
+
+      - name: Check for remaining lint issues
         run: ruff check .
 
       - name: Check formatting
