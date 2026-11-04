@@ -1,5 +1,7 @@
 import unittest
+from unittest.mock import patch, sentinel
 
+from imdb_list_generator import cli
 from imdb_list_generator.scraper import _validate_imdb_url, parse_movie_element
 
 IMDB_LIST_URL = "https://www.imdb.com/list/ls569954785/"
@@ -21,6 +23,27 @@ class FakeElement:
 
 
 class IMDbScraperTests(unittest.TestCase):
+    def test_cli_requires_url_when_not_provided(self):
+        with (
+            patch("sys.argv", ["imdb-list-generator"]),
+            patch.object(cli, "scrape_imdb_list") as scrape,
+            self.assertRaisesRegex(SystemExit, "2"),
+        ):
+            cli.main()
+
+        scrape.assert_not_called()
+
+    def test_cli_passes_provided_url_to_scraper(self):
+        url = "https://www.imdb.com/list/ls569954785/"
+        with (
+            patch("sys.argv", ["imdb-list-generator", url]),
+            patch.object(cli, "scrape_imdb_list", return_value=sentinel.json),
+            patch("builtins.print") as print_output,
+        ):
+            cli.main()
+
+        print_output.assert_called_once_with(sentinel.json)
+
     def test_validate_accepts_supported_imdb_urls(self):
         for url in (IMDB_LIST_URL, IMDB_WATCHLIST_URL, IMDB_TOP250_URL):
             with self.subTest(url=url):

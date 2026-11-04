@@ -1,7 +1,7 @@
 # IMDb List Generator
 
 Scrape an IMDb list, user watchlist, or Top 250 chart and print its entries as
-JSON.
+JSON. This JSON is in the Steven Lu custom list format, which can be directly used in Radarr or Sonarr.
 
 ## Install
 
@@ -18,13 +18,12 @@ machine running the scraper.
 
 ## Run
 
-The configured watchlist is the default:
-
 ```bash
 python -m imdb_list_generator
 ```
 
-Pass an IMDb list, watchlist, or chart URL to scrape a different page:
+Provide an IMDb list, watchlist, or chart URL. Running the command without a URL
+returns an error stating that an IMDb list URL is required:
 
 ```bash
 python -m imdb_list_generator "https://www.imdb.com/list/ls569954785/"
