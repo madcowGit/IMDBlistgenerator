@@ -182,7 +182,11 @@ def _lookup_tvdb_id(imdb_id: str, token: str) -> int | None:
     response = _tvdb_request(
         f"{TVDB_API_URL}/search/remoteid/{quote(imdb_id, safe='')}", token=token
     )
+    if "data" not in response:
+        raise RuntimeError("TVDB lookup response did not contain a result list.")
     results = response.get("data")
+    if results is None:
+        return None
     if not isinstance(results, list):
         raise RuntimeError("TVDB lookup response did not contain a result list.")
 

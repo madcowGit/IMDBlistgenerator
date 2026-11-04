@@ -1,6 +1,7 @@
 import json
 import unittest
 from contextlib import nullcontext
+from io import BytesIO
 from unittest.mock import patch, sentinel
 
 from imdb_list_generator import cli
@@ -8,6 +9,7 @@ from imdb_list_generator.scraper import (
     YEAR_SELECTOR,
     _is_tv_series_element,
     _lookup_tvdb_id,
+    _tvdb_request,
     _validate_imdb_url,
     parse_movie_element,
     scrape_imdb_list,
@@ -211,6 +213,28 @@ class IMDbScraperTests(unittest.TestCase):
             "https://api4.thetvdb.com/v4/search/remoteid/tt1234567",
             token="token",
         )
+
+    @patch("imdb_list_generator.scraper.urlopen")
+    def test_tvdb_request_sends_bearer_token(self, urlopen):
+        urlopen.return_value = BytesIO(b'{"status":"success","data":[]}')
+
+        _tvdb_request("https://api4.thetvdb.com/v4/search", token="test-token")
+
+        request = urlopen.call_args.args[0]
+        self.assertEqual(request.get_header("Authorization"), "Bearer test-token")
+
+    @patch("imdb_list_generator.scraper._tvdb_request")
+    def test_lookup_tvdb_id_returns_none_when_tvdb_has_no_match(self, tvdb_request):
+        tvdb_request.return_value = {"status": "success", "data": None}
+
+        self.assertIsNone(_lookup_tvdb_id("tt1234567", "token"))
+
+    @patch("imdb_list_generator.scraper._tvdb_request")
+    def test_lookup_tvdb_id_rejects_missing_result_data(self, tvdb_request):
+        tvdb_request.return_value = {"status": "success"}
+
+        with self.assertRaisesRegex(RuntimeError, "did not contain a result list"):
+            _lookup_tvdb_id("tt1234567", "token")
 
 
 if __name__ == "__main__":

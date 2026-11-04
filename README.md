@@ -39,8 +39,8 @@ The installed `imdb-list-generator` command can be used in place of
 
 TV series entries include a `tvdb_id` obtained through the TVDB API. Set
 `TVDB_API_KEY` in the environment to enable this lookup; scraping a TV series
-without the key or if TVDB lookup fails returns an error. Movie entries do not
-require the key.
+without the key or if the TVDB request fails returns an error. If TVDB has no
+matching series, `tvdb_id` is `null`. Movie entries do not require the key.
 
 ## Web API
 
