@@ -7,6 +7,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.remote.webelement import WebElement
 from seleniumbase import SB
+from seleniumbase.common.exceptions import NoSuchElementException
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +129,7 @@ def scrape_imdb_list(url: str) -> str:
         sb.uc_open_with_reconnect(_url_for_page(url, 1), reconnect_time=4)
         try:
             sb.wait_for_element_present(ITEM_SELECTOR, timeout=20)
-        except TimeoutException as exc:
+        except (NoSuchElementException, TimeoutException) as exc:
             raise RuntimeError(
                 "IMDb did not display list items. Check that the URL is accessible "
                 "and that IMDb did not show a sign-in or verification page."
@@ -147,7 +148,7 @@ def scrape_imdb_list(url: str) -> str:
                 sb.driver.get(_url_for_page(url, page_number))
                 try:
                     sb.wait_for_element_present(ITEM_SELECTOR, timeout=20)
-                except TimeoutException as exc:
+                except (NoSuchElementException, TimeoutException) as exc:
                     raise RuntimeError(
                         f"IMDb did not load watchlist/list page {page_number}."
                     ) from exc

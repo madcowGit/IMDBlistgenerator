@@ -9,9 +9,8 @@ permissions:
 
 jobs:
   test:
-    name: IMDb scraper integration tests
+    name: Unit tests
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -21,11 +20,8 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Set up Chrome
-        uses: browser-actions/setup-chrome@v1
-
       - name: Install project
         run: python -m pip install .
 
       - name: Run tests
-        run: xvfb-run -a python -m unittest discover -s tests -v
+        run: python -m unittest discover -s tests -v

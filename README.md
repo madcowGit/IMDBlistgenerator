@@ -36,12 +36,12 @@ The installed `imdb-list-generator` command can be used in place of
 
 ## Tests
 
-The tests in `tests/` are live integration tests. They open a browser and access
-IMDb, so they require network access and can be affected by changes or access
-restrictions on IMDb:
+The default test run uses deterministic unit tests and does not access IMDb.
+Live integration tests open a browser and can be affected by network access
+restrictions or changes on IMDb. Run them explicitly with:
 
 ```bash
-python -m unittest discover -s tests -v
+RUN_IMDB_INTEGRATION_TESTS=1 python -m unittest discover -s tests -v
 ```
 
 Run lint and formatting checks with:
