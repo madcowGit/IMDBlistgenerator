@@ -2,6 +2,7 @@ name: API Tests
 
 on:
   push:
+    branches: ["**"]
   pull_request:
 
 permissions:
