@@ -92,7 +92,13 @@ The container exposes port `4444`; use `http://localhost:4444/health` to check
 that it is ready. Published release images support `linux/amd64` and
 `linux/arm64` under the same image tag.
 
-Run the published image with Docker Compose by creating a `compose.yaml` file:
+Run the published image with Docker Compose by creating a `compose.yaml` file.
+Set `IMDB_LIST_URLS` to one IMDb list, watchlist, or chart URL per line. Those
+lists are refreshed immediately at startup and then every six hours by default.
+Set `IMDB_CACHE_INTERVAL_HOURS` to change the refresh interval and
+`IMDB_CACHE_DIR` to change where the JSON cache files are stored. Requests for
+configured URLs are served from disk; other URLs continue to be scraped on
+demand. A previous cache remains available if a refresh fails.
 
 ```yaml
 services:
@@ -102,15 +108,25 @@ services:
       - "4444:4444"
     environment:
       TVDB_API_KEY: ${TVDB_API_KEY:-}
+      IMDB_LIST_URLS: |
+        https://www.imdb.com/list/ls569954785/
+        https://www.imdb.com/chart/top/
+      IMDB_CACHE_INTERVAL_HOURS: ${IMDB_CACHE_INTERVAL_HOURS:-6}
+      IMDB_CACHE_DIR: /app/cache
+    volumes:
+      - ./cache:/app/cache
     restart: unless-stopped
 ```
 
-Set `TVDB_API_KEY` in your shell before starting Compose if the list contains
-TV series:
+Set `TVDB_API_KEY` in your shell before starting Compose if a cached list
+contains TV series:
 
 ```bash
 export TVDB_API_KEY="your-tvdb-api-key"
 ```
+
+The cache directory is persisted on the host in `./cache`. Compose must be able
+to write to this directory.
 
 Start the service and follow its logs with:
 

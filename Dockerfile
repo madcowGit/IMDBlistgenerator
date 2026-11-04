@@ -25,7 +25,7 @@ COPY src ./src
 
 RUN python -m pip install --no-cache-dir . \
     && useradd --create-home --uid 10001 app \
-    && mkdir -p /app/downloaded_files \
+    && mkdir -p /app/downloaded_files /app/cache \
     && chmod +x /usr/local/bin/docker-entrypoint \
     && chown -R app:app /app
 

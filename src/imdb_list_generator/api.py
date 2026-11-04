@@ -4,11 +4,19 @@ from typing import Any
 
 from flask import Flask, jsonify, request
 
-from imdb_list_generator.scraper import scrape_imdb_list
+from imdb_list_generator.cache import (
+    CacheNotReadyError,
+    create_cache_from_environment,
+)
+from imdb_list_generator.scraper import _validate_imdb_url, scrape_imdb_list
 
 
 def create_app() -> Flask:
     app = Flask(__name__)
+    scrape_cache = create_cache_from_environment()
+    app.extensions["imdb_scrape_cache"] = scrape_cache
+    if scrape_cache is not None:
+        scrape_cache.start()
 
     def scrape_url(url: str, *, tvdb_only: bool = False) -> Any:
         url = url.strip()
@@ -16,13 +24,18 @@ def create_app() -> Flask:
             return jsonify({"error": "IMDb list URL is required."}), 400
 
         try:
-            result = scrape_imdb_list(url)
+            if scrape_cache is not None and scrape_cache.is_configured(url):
+                _validate_imdb_url(url)
+                items = scrape_cache.load(url)
+            else:
+                items = json.loads(scrape_imdb_list(url))
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
+        except CacheNotReadyError as exc:
+            return jsonify({"error": str(exc)}), 503
         except RuntimeError as exc:
             return jsonify({"error": str(exc)}), 502
 
-        items = json.loads(result)
         if tvdb_only:
             items = [
                 item
