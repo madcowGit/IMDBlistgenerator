@@ -76,6 +76,9 @@ To return only items with a resolved TVDB ID, use
 http://localhost:4444/api/scrapetvseries?url=https%3A%2F%2Fwww.imdb.com%2Flist%2Fls569954785%2F
 ```
 
+This endpoint returns Sonarr custom-list entries with only `TvdbId` and
+`Title` fields.
+
 ## Docker
 
 Build and run the API container locally:

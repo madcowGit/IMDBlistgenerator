@@ -105,18 +105,22 @@ class IMDbApiTests(unittest.TestCase):
 
     @patch("imdb_list_generator.api.scrape_imdb_list")
     def test_browser_tv_series_endpoint_returns_only_items_with_tvdb_ids(self, scrape):
-        expected = [
+        scraped_items = [
             {"title": "Series", "imdb_id": "tt1111111", "tvdb_id": 12345},
             {"title": "Another series", "imdb_id": "tt2222222", "tvdb_id": "67890"},
         ]
         scrape.return_value = json.dumps(
             [
-                *expected[:1],
+                *scraped_items[:1],
                 {"title": "Movie", "imdb_id": "tt3333333"},
                 {"title": "Unmatched series", "imdb_id": "tt4444444", "tvdb_id": None},
-                expected[1],
+                scraped_items[1],
             ]
         )
+        expected = [
+            {"TvdbId": 12345, "Title": "Series"},
+            {"TvdbId": "67890", "Title": "Another series"},
+        ]
 
         response = self.client.get(
             "/api/scrapetvseries",
@@ -125,6 +129,7 @@ class IMDbApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json(), expected)
+        self.assertEqual(set(response.get_json()[0]), {"TvdbId", "Title"})
         scrape.assert_called_once_with("https://www.imdb.com/list/ls123456789/")
 
     def test_browser_tv_series_endpoint_requires_url(self):

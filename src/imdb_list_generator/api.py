@@ -38,9 +38,11 @@ def create_app() -> Flask:
 
         if tvdb_only:
             items = [
-                item
+                {"TvdbId": item["tvdb_id"], "Title": item["title"]}
                 for item in items
-                if isinstance(item, dict) and item.get("tvdb_id") is not None
+                if isinstance(item, dict)
+                and item.get("tvdb_id") is not None
+                and isinstance(item.get("title"), str)
             ]
         return jsonify(items)
 
