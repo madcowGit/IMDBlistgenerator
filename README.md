@@ -1,7 +1,11 @@
 # IMDb List Generator
 
 Scrape an IMDb list, user watchlist, or Top 250 chart and print its entries as
-JSON. This JSON is in the Steven Lu custom list format, which can be directly used in Radarr or Sonarr.
+JSON. This JSON is in the Steven Lu custom list format, which can be directly used in Radarr or Sonarr (still WIP, because it needs TVDBId using their API).
+
+It is intended to be deployed in docker on your own local network where Radarr/Sonarr can directly interact with it.
+
+Note, because it open a browser and browses the IMDB site to scrape, it is not a very fast solution. But it works.
 
 ## Install
 
