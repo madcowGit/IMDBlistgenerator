@@ -9,6 +9,7 @@ description = "Scrape IMDb lists and watchlists into JSON."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "flask",
     "seleniumbase",
 ]
 
@@ -19,6 +20,7 @@ dev = [
 
 [project.scripts]
 imdb-list-generator = "imdb_list_generator.cli:main"
+imdb-list-generator-api = "imdb_list_generator.api:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

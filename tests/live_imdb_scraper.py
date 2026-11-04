@@ -3,6 +3,10 @@ import re
 import unittest
 
 from imdb_list_generator.scraper import scrape_imdb_list
+import warnings
+
+# Ignore ResourceWarnings caused by third-party packages checking subprocesses
+warnings.filterwarnings("ignore", category=ResourceWarning, module="pyscreeze")
 
 IMDB_LIST_URL = "https://www.imdb.com/list/ls569954785/"
 IMDB_WATCHLIST_URL = "https://www.imdb.com/user/p.ug53yeky7gegylcric634z6yta/watchlist"
