@@ -1,13 +1,64 @@
 # IMDb List Generator
 
 Scrape an IMDb list, user watchlist, or Top 250 chart and print its entries as
-JSON. This JSON is in the Steven Lu custom list format, which can be directly used in Radarr or Sonarr (still WIP, because it needs TVDBId using their API).
+JSON. This JSON is in the Steven Lu custom list format, which can be directly used in Radarr or Sonarr .
 
 It is intended to be deployed in docker on your own local network where Radarr/Sonarr can directly interact with it.
 
-Note, because it open a browser and browses the IMDB site to scrape, it is not a very fast solution. But it works.
+Note: because the scraper needs to open a browser window and browse the IMDB site to scrape, it is not a very fast solution. In the docker setup the scraped content is cached and updated every X hours. This means that there can be delay due to this mechanism
 
-## Install
+## Docker
+
+The image is published on `ghcr.io/madcowgit/imdblistgenerator:latest`. Published release images support `linux/amd64` and `linux/arm64` under the same image tag.
+
+### API end points
+
+| API endpoint | Description |
+| -------- | -------- | 
+| `/health`    | general status info     | 
+| `/api/scrape?url=...`     | Scrape IMDB (movies & TV series) list into JSON in Steven Lu custom format | 
+| `/api/scrapetvseries?url=...`     | Scrape IMDB. Filter only TV Series and provide as Sonarr Custom List format | 
+
+### Docker compose
+Below is an example of a docker-compose.yml to run this container.
+
+Set `IMDB_LIST_URLS` to one IMDb list, watchlist, or chart URL per line. Those
+lists are refreshed immediately at startup and then every six hours by default.
+Set `IMDB_CACHE_INTERVAL_HOURS` to change the refresh interval and
+`IMDB_CACHE_DIR` to change where the JSON cache files are stored. Requests for
+configured URLs are served from disk; other URLs continue to be scraped on
+demand. A trailing slash on the configured URL is optional when requesting the
+cache. A previous cache remains available if a refresh fails.
+
+Set `TVDB_API_KEY` in your shell before starting Compose if a cached list
+contains TV series. Be sure to use secrets or other methods to no put the API key directly in the compose file.
+
+The container operates on port `4444`
+
+```yaml
+services:
+  imdb-list-generator:
+    image: ghcr.io/madcowgit/imdblistgenerator:latest
+    ports:
+      - "4444:4444"
+    environment:
+      TVDB_API_KEY: ${TVDB_API_KEY}
+      IMDB_LIST_URLS: |
+        https://www.imdb.com/list/ls569954785/
+        https://www.imdb.com/chart/top/
+      IMDB_CACHE_INTERVAL_HOURS: ${IMDB_CACHE_INTERVAL_HOURS}
+      IMDB_CACHE_DIR: /app/cache
+    volumes:
+      - imdb-cache:/app/cache
+    restart: unless-stopped
+
+volumes:
+  imdb-cache:
+```
+
+# Inner workings
+
+## Python scaper
 
 Use Python 3.11 or newer and install the project in a virtual environment:
 
@@ -17,14 +68,9 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-SeleniumBase starts a browser when scraping. Install Chrome or Chromium on the
-machine running the scraper.
+SeleniumBase starts a browser. Chrome must be installed on your system when scraping.
 
 ## Run
-
-```bash
-python -m imdb_list_generator
-```
 
 Provide an IMDb list, watchlist, or chart URL. Running the command without a URL
 returns an error stating that an IMDb list URL is required:
@@ -79,108 +125,10 @@ http://localhost:4444/api/scrapetvseries?url=https%3A%2F%2Fwww.imdb.com%2Flist%2
 This endpoint returns Sonarr custom-list entries with only `TvdbId` and
 `Title` fields.
 
-## Docker
-
-Build and run the API container locally:
-
-```bash
-docker build -t imdb-list-generator .
-docker run --rm -p 4444:4444 imdb-list-generator
-```
-
-For a published release, use `ghcr.io/madcowgit/imdblistgenerator:latest`
-instead of `imdb-list-generator`.
-
-The container exposes port `4444`; use `http://localhost:4444/health` to check
-that it is ready. Published release images support `linux/amd64` and
-`linux/arm64` under the same image tag.
-
-Run the published image with Docker Compose by creating a `compose.yaml` file.
-Set `IMDB_LIST_URLS` to one IMDb list, watchlist, or chart URL per line. Those
-lists are refreshed immediately at startup and then every six hours by default.
-Set `IMDB_CACHE_INTERVAL_HOURS` to change the refresh interval and
-`IMDB_CACHE_DIR` to change where the JSON cache files are stored. Requests for
-configured URLs are served from disk; other URLs continue to be scraped on
-demand. A trailing slash on the configured URL is optional when requesting the
-cache. A previous cache remains available if a refresh fails.
-
-```yaml
-services:
-  imdb-list-generator:
-    image: ghcr.io/madcowgit/imdblistgenerator:latest
-    ports:
-      - "4444:4444"
-    environment:
-      TVDB_API_KEY: ${TVDB_API_KEY:-}
-      IMDB_LIST_URLS: |
-        https://www.imdb.com/list/ls569954785/
-        https://www.imdb.com/chart/top/
-      IMDB_CACHE_INTERVAL_HOURS: ${IMDB_CACHE_INTERVAL_HOURS:-6}
-      IMDB_CACHE_DIR: /app/cache
-    volumes:
-      - imdb-cache:/app/cache
-    restart: unless-stopped
-
-volumes:
-  imdb-cache:
-```
-
-Set `TVDB_API_KEY` in your shell before starting Compose if a cached list
-contains TV series:
-
-```bash
-export TVDB_API_KEY="your-tvdb-api-key"
-```
-
-The cache is persisted in the Docker-managed `imdb-cache` volume. This avoids
-host-directory ownership mismatches with the container's non-root `app` user
-(UID 10001). If you prefer a bind mount such as `./cache:/app/cache`, make sure
-the host directory is writable by UID 10001; on Linux, you can run
-`sudo chown -R 10001:10001 ./cache`.
-
-Start the service and follow its logs with:
-
-```bash
-docker compose up -d
-docker compose logs -f
-```
-
-Then send requests to `http://localhost:4444`. Stop the service with
-`docker compose down`.
-
-## Tests
-
-The default test run uses deterministic unit tests and does not access IMDb:
-
-```bash
-python -m unittest discover -s tests -v
-```
-
-API tests can also be run separately:
-
-```bash
-python -m unittest discover -s tests -p 'test_api.py' -v
-```
-
-Live integration tests are in `tests/live_imdb_scraper.py`. They open a browser
-and can be affected by network access restrictions or changes on IMDb. Run them
-explicitly with:
-
-```bash
-python -m unittest discover -s tests -p 'live_*.py' -v
-```
-
-Run lint and formatting checks with:
-
-```bash
-ruff check .
-ruff format --check .
-```
-
-## License
+# License
 
 This project is licensed under the [MIT License](LICENSE).
 
-## Disclaimer
+# Disclaimer
 
 This project is a non-commercial project that has been entirely vibe-coded. The author is not responsible for any consequences due to the usage of this project. Use at your own risk. 
