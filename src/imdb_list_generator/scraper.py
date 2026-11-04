@@ -38,8 +38,11 @@ def _validate_imdb_url(url: str) -> None:
 
     is_list = re.fullmatch(r"/list/ls\d+/?", parsed_url.path)
     is_watchlist = re.fullmatch(r"/user/[^/]+/watchlist/?", parsed_url.path)
-    if not (is_list or is_watchlist):
-        raise ValueError("URL must point to an IMDb list or user watchlist")
+    is_top_chart = re.fullmatch(r"/chart/top/?", parsed_url.path)
+    if not (is_list or is_watchlist or is_top_chart):
+        raise ValueError(
+            "URL must point to an IMDb list, user watchlist, or Top 250 chart"
+        )
 
 
 def _url_for_page(url: str, page_number: int) -> str:

@@ -1,6 +1,7 @@
 # IMDb List Generator
 
-Scrape an IMDb list or user watchlist and print its entries as JSON.
+Scrape an IMDb list, user watchlist, or Top 250 chart and print its entries as
+JSON.
 
 ## Install
 
@@ -23,10 +24,11 @@ The configured watchlist is the default:
 python -m imdb_list_generator
 ```
 
-Pass an IMDb list or watchlist URL to scrape a different page:
+Pass an IMDb list, watchlist, or chart URL to scrape a different page:
 
 ```bash
 python -m imdb_list_generator "https://www.imdb.com/list/ls569954785/"
+python -m imdb_list_generator "https://www.imdb.com/chart/top/"
 ```
 
 The installed `imdb-list-generator` command can be used in place of
@@ -48,3 +50,7 @@ Run lint and formatting checks with:
 ruff check .
 ruff format --check .
 ```
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).

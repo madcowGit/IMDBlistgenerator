@@ -6,6 +6,7 @@ from imdb_list_generator.scraper import scrape_imdb_list
 
 IMDB_LIST_URL = "https://www.imdb.com/list/ls569954785/"
 IMDB_WATCHLIST_URL = "https://www.imdb.com/user/p.ug53yeky7gegylcric634z6yta/watchlist"
+IMDB_TOP250_URL = "https://www.imdb.com/chart/top/"
 EXPECTED_MOVIE_FIELDS = {
     "title",
     "imdb_id",
@@ -46,6 +47,17 @@ class IMDbScraperIntegrationTests(unittest.TestCase):
             len({movie["imdb_id"] for movie in movies}),
             len(movies),
             "Watchlist entries should have unique IMDb IDs",
+        )
+
+    def test_scrapes_top_250_chart_entries(self):
+        json_output = scrape_imdb_list(IMDB_TOP250_URL)
+        movies = json.loads(json_output)
+
+        self.assertEqual(len(movies), 250)
+        self.assertEqual(
+            len({movie["imdb_id"] for movie in movies}),
+            250,
+            "Top 250 chart entries should have unique IMDb IDs",
         )
 
 
