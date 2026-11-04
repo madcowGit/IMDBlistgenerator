@@ -41,7 +41,7 @@ Start the Flask server with:
 imdb-list-generator-api
 ```
 
-The server listens on `0.0.0.0:5000` by default. Set `PORT` to change the port.
+The server listens on `0.0.0.0:4444` by default. Set `PORT` to change the port.
 Send an IMDb list, watchlist, or chart URL as JSON to `POST /api/scrape`:
 
 ```bash
@@ -52,6 +52,22 @@ curl -X POST http://localhost:5000/api/scrape \
 
 The response is a JSON array of scraped titles. `GET /` reports whether the
 service is up, and `GET /health` reports API and scraper availability.
+
+## Docker
+
+Build and run the API container locally:
+
+```bash
+docker build -t imdb-list-generator .
+docker run --rm -p 4444:4444 imdb-list-generator
+```
+
+For a published release, use `ghcr.io/madcowgit/imdblistgenerator:latest`
+instead of `imdb-list-generator`.
+
+The container exposes port `4444`; use `http://localhost:4444/health` to check
+that it is ready. Published release images support `linux/amd64` and
+`linux/arm64` under the same image tag.
 
 ## Tests
 
@@ -85,3 +101,7 @@ ruff format --check .
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
+
+## Disclaimer
+
+This project is a non-commercial project that has been entirely vibe-coded. The author is not responsible for any consequences due to the usage of this project. Use at your own risk. 

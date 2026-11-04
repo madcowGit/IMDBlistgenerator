@@ -1,12 +1,19 @@
 import json
 import logging
+import os
 import re
+import shutil
+import tempfile
+import time
+from contextlib import contextmanager
 from typing import TypedDict
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from selenium.common.exceptions import TimeoutException
+from selenium.webdriver import Chrome
 from selenium.webdriver.remote.webelement import WebElement
 from seleniumbase import SB
+from seleniumbase import undetected as uc
 from seleniumbase.common.exceptions import NoSuchElementException
 
 logger = logging.getLogger(__name__)
@@ -27,6 +34,62 @@ class Movie(TypedDict):
     poster_url: str | None
     year: int | None
     rating: float | None
+
+
+class SystemChromiumBrowser:
+    def __init__(self, driver: Chrome) -> None:
+        self.driver = driver
+
+    def uc_open_with_reconnect(self, url: str, reconnect_time: int) -> None:
+        self.driver.get(url)
+
+    def wait_for_element_present(self, selector: str, timeout: int) -> None:
+        from selenium.webdriver.support.ui import WebDriverWait
+
+        WebDriverWait(self.driver, timeout).until(
+            lambda driver: driver.find_elements("css selector", selector)
+        )
+
+    def find_elements(self, selector: str) -> list[WebElement]:
+        return self.driver.find_elements("css selector", selector)
+
+    def scroll_to_bottom(self) -> None:
+        self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+
+    @staticmethod
+    def sleep(seconds: int) -> None:
+        time.sleep(seconds)
+
+
+@contextmanager
+def _browser():
+    if os.environ.get("IMDB_USE_SYSTEM_CHROMIUM") == "1":
+        with tempfile.TemporaryDirectory(prefix="imdb-chromedriver-") as temp_dir:
+            driver_path = os.path.join(temp_dir, "chromedriver")
+            shutil.copy2(
+                os.environ.get("CHROMEDRIVER_PATH", "/usr/bin/chromedriver"),
+                driver_path,
+            )
+            os.chmod(driver_path, 0o755)
+            options = uc.ChromeOptions()
+            options.binary_location = os.environ.get(
+                "CHROMIUM_BINARY", "/usr/bin/chromium"
+            )
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+            driver = uc.Chrome(
+                options=options,
+                driver_executable_path=driver_path,
+                browser_executable_path=options.binary_location,
+                use_subprocess=True,
+            )
+            try:
+                yield SystemChromiumBrowser(driver)
+            finally:
+                driver.quit()
+    else:
+        with SB(uc=True, headless=False) as sb:
+            yield sb
 
 
 def _validate_imdb_url(url: str) -> None:
@@ -125,7 +188,7 @@ def scrape_imdb_list(url: str) -> str:
     movies: list[Movie] = []
     seen_imdb_ids: set[str] = set()
 
-    with SB(uc=True, headless=False) as sb:
+    with _browser() as sb:
         sb.uc_open_with_reconnect(_url_for_page(url, 1), reconnect_time=4)
         try:
             sb.wait_for_element_present(ITEM_SELECTOR, timeout=20)

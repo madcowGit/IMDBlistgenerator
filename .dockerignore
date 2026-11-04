@@ -1,0 +1,12 @@
+.git
+.github
+.venv
+__pycache__
+*.py[cod]
+*.egg-info
+.ruff_cache
+.pytest_cache
+.coverage
+downloaded_files
+stevenlu_movies.json
+tests

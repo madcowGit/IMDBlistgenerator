@@ -1,9 +1,9 @@
 import json
 import re
 import unittest
+import warnings
 
 from imdb_list_generator.scraper import scrape_imdb_list
-import warnings
 
 # Ignore ResourceWarnings caused by third-party packages checking subprocesses
 warnings.filterwarnings("ignore", category=ResourceWarning, module="pyscreeze")
