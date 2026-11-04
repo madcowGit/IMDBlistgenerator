@@ -45,9 +45,16 @@ The server listens on `0.0.0.0:4444` by default. Set `PORT` to change the port.
 Send an IMDb list, watchlist, or chart URL as JSON to `POST /api/scrape`:
 
 ```bash
-curl -X POST http://localhost:5000/api/scrape \
+curl -X POST http://localhost:4444/api/scrape \
   -H "Content-Type: application/json" \
   -d '{"url":"https://www.imdb.com/list/ls569954785/"}'
+```
+
+You can also initiate a scrape by opening `GET /api/scrape?url=...` in a
+browser. For example, open this address to scrape the watchlist:
+
+```text
+http://localhost:4444/api/scrape?url=https%3A%2F%2Fwww.imdb.com%2Fuser%2Fp.ug53yeky7gegylcric634z6yta%2Fwatchlist
 ```
 
 The response is a JSON array of scraped titles. `GET /` reports whether the
@@ -68,6 +75,27 @@ instead of `imdb-list-generator`.
 The container exposes port `4444`; use `http://localhost:4444/health` to check
 that it is ready. Published release images support `linux/amd64` and
 `linux/arm64` under the same image tag.
+
+Run the published image with Docker Compose by creating a `compose.yaml` file:
+
+```yaml
+services:
+  imdb-list-generator:
+    image: ghcr.io/madcowgit/imdblistgenerator:latest
+    ports:
+      - "4444:4444"
+    restart: unless-stopped
+```
+
+Start the service and follow its logs with:
+
+```bash
+docker compose up -d
+docker compose logs -f
+```
+
+Then send requests to `http://localhost:4444`. Stop the service with
+`docker compose down`.
 
 ## Tests
 

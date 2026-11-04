@@ -41,6 +41,30 @@ class IMDbApiTests(unittest.TestCase):
         self.assertEqual(response.get_json(), expected)
         scrape.assert_called_once_with("https://www.imdb.com/list/ls123456789/")
 
+    @patch("imdb_list_generator.api.scrape_imdb_list")
+    def test_browser_scrape_endpoint_returns_scraped_json(self, scrape):
+        expected = [{"title": "Sample", "imdb_id": "tt1234567"}]
+        scrape.return_value = json.dumps(expected)
+
+        response = self.client.get(
+            "/api/scrape",
+            query_string={
+                "url": "https://www.imdb.com/user/p.ug53yeky7gegylcric634z6yta/watchlist"
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json(), expected)
+        scrape.assert_called_once_with(
+            "https://www.imdb.com/user/p.ug53yeky7gegylcric634z6yta/watchlist"
+        )
+
+    def test_browser_scrape_endpoint_requires_url(self):
+        response = self.client.get("/api/scrape")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json(), {"error": "IMDb list URL is required."})
+
     def test_scrape_endpoint_requires_json_url(self):
         for payload in ({}, {"url": 42}, {"other": "value"}):
             with self.subTest(payload=payload):

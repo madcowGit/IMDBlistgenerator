@@ -10,6 +10,20 @@ from imdb_list_generator.scraper import scrape_imdb_list
 def create_app() -> Flask:
     app = Flask(__name__)
 
+    def scrape_url(url: str) -> Any:
+        url = url.strip()
+        if not url:
+            return jsonify({"error": "IMDb list URL is required."}), 400
+
+        try:
+            result = scrape_imdb_list(url)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        except RuntimeError as exc:
+            return jsonify({"error": str(exc)}), 502
+
+        return jsonify(json.loads(result))
+
     @app.get("/")
     def status() -> Any:
         return jsonify({"status": "up"})
@@ -38,18 +52,15 @@ def create_app() -> Flask:
         if not isinstance(payload, dict) or not isinstance(payload.get("url"), str):
             return jsonify({"error": "Request JSON must contain a string 'url'."}), 400
 
-        url = payload["url"].strip()
-        if not url:
+        return scrape_url(payload["url"])
+
+    @app.get("/api/scrape")
+    def scrape_from_browser() -> Any:
+        url = request.args.get("url")
+        if url is None:
             return jsonify({"error": "IMDb list URL is required."}), 400
 
-        try:
-            result = scrape_imdb_list(url)
-        except ValueError as exc:
-            return jsonify({"error": str(exc)}), 400
-        except RuntimeError as exc:
-            return jsonify({"error": str(exc)}), 502
-
-        return jsonify(json.loads(result))
+        return scrape_url(url)
 
     return app
 
