@@ -3,12 +3,16 @@ import logging
 import os
 import re
 import shutil
+import ssl
 import tempfile
 import time
 from contextlib import contextmanager
-from typing import TypedDict
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from typing import Any, NotRequired, TypedDict
+from urllib.error import URLError
+from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
+from urllib.request import Request, urlopen
 
+import certifi
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver import Chrome
 from selenium.webdriver.remote.webelement import WebElement
@@ -18,6 +22,7 @@ from seleniumbase.common.exceptions import NoSuchElementException
 
 logger = logging.getLogger(__name__)
 
+TVDB_API_URL = "https://api4.thetvdb.com/v4"
 ITEM_SELECTOR = "li.ipc-metadata-list-summary-item"
 TITLE_SELECTOR = "a.ipc-title-link-wrapper, a[href*='/title/tt']"
 YEAR_SELECTOR = (
@@ -34,6 +39,7 @@ class Movie(TypedDict):
     poster_url: str | None
     year: int | None
     rating: float | None
+    tvdb_id: NotRequired[int | None]
 
 
 class SystemChromiumBrowser:
@@ -129,6 +135,72 @@ def _url_for_page(url: str, page_number: int) -> str:
     )
 
 
+def _is_tv_series_element(element: WebElement) -> bool:
+    return any(
+        metadata.text.strip().casefold() in {"tv series", "tv mini series"}
+        for metadata in element.find_elements("css selector", YEAR_SELECTOR)
+    )
+
+
+def _tvdb_request(
+    url: str,
+    *,
+    method: str = "GET",
+    data: bytes | None = None,
+    token: str | None = None,
+) -> dict[str, Any]:
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    request = Request(url, data=data, headers=headers, method=method)
+
+    try:
+        context = ssl.create_default_context(cafile=certifi.where())
+        with urlopen(request, timeout=20, context=context) as response:
+            result = json.load(response)
+    except (URLError, TimeoutError, json.JSONDecodeError) as exc:
+        raise RuntimeError(
+            "TVDB request failed; check the API key and connectivity."
+        ) from exc
+
+    if not isinstance(result, dict) or result.get("status") != "success":
+        raise RuntimeError("TVDB returned an unsuccessful or invalid response.")
+    return result
+
+
+def _get_tvdb_token(api_key: str) -> str:
+    payload = json.dumps({"apikey": api_key}).encode("utf-8")
+    response = _tvdb_request(f"{TVDB_API_URL}/login", method="POST", data=payload)
+    data = response.get("data")
+    token = data.get("token") if isinstance(data, dict) else None
+    if not isinstance(token, str) or not token:
+        raise RuntimeError("TVDB login response did not contain an API token.")
+    return token
+
+
+def _lookup_tvdb_id(imdb_id: str, token: str) -> int | None:
+    response = _tvdb_request(
+        f"{TVDB_API_URL}/search/remoteid/{quote(imdb_id, safe='')}", token=token
+    )
+    results = response.get("data")
+    if not isinstance(results, list):
+        raise RuntimeError("TVDB lookup response did not contain a result list.")
+
+    for result in results:
+        if not isinstance(result, dict):
+            continue
+        series = result.get("series")
+        series_result = series if isinstance(series, dict) else result
+        if series is None and result.get("type") not in (None, "series"):
+            continue
+        tvdb_id = series_result.get("id", series_result.get("tvdb_id"))
+        if isinstance(tvdb_id, int):
+            return tvdb_id
+        if isinstance(tvdb_id, str) and tvdb_id.isdigit():
+            return int(tvdb_id)
+    return None
+
+
 def parse_movie_element(element: WebElement) -> Movie | None:
     """Parse an IMDb item into Steven Lu's JSON layout."""
     title_elements = element.find_elements("css selector", TITLE_SELECTOR)
@@ -187,6 +259,7 @@ def scrape_imdb_list(url: str) -> str:
     _validate_imdb_url(url)
     movies: list[Movie] = []
     seen_imdb_ids: set[str] = set()
+    tvdb_token: str | None = None
 
     with _browser() as sb:
         sb.uc_open_with_reconnect(_url_for_page(url, 1), reconnect_time=4)
@@ -248,6 +321,18 @@ def scrape_imdb_list(url: str) -> str:
                 if movie_info["imdb_id"] in seen_imdb_ids:
                     continue
                 seen_imdb_ids.add(movie_info["imdb_id"])
+                if _is_tv_series_element(item):
+                    api_key = os.environ.get("TVDB_API_KEY")
+                    if not api_key:
+                        raise RuntimeError(
+                            "TVDB_API_KEY is required to include TVDB IDs "
+                            "for TV series."
+                        )
+                    if tvdb_token is None:
+                        tvdb_token = _get_tvdb_token(api_key)
+                    movie_info["tvdb_id"] = _lookup_tvdb_id(
+                        movie_info["imdb_id"], tvdb_token
+                    )
                 page_movies.append(movie_info)
 
             if skipped_items:

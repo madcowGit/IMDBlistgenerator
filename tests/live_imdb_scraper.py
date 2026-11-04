@@ -30,7 +30,10 @@ class IMDbScraperIntegrationTests(unittest.TestCase):
 
         for movie in movies:
             with self.subTest(imdb_id=movie.get("imdb_id")):
-                self.assertEqual(set(movie), EXPECTED_MOVIE_FIELDS)
+                self.assertIn(
+                    set(movie),
+                    (EXPECTED_MOVIE_FIELDS, EXPECTED_MOVIE_FIELDS | {"tvdb_id"}),
+                )
                 self.assertIsInstance(movie["title"], str)
                 self.assertTrue(movie["title"].strip())
                 self.assertRegex(movie["imdb_id"], re.compile(r"^tt\d+$"))
@@ -41,6 +44,10 @@ class IMDbScraperIntegrationTests(unittest.TestCase):
                 self.assertTrue(
                     movie["rating"] is None or isinstance(movie["rating"], (int, float))
                 )
+                if "tvdb_id" in movie:
+                    self.assertTrue(
+                        movie["tvdb_id"] is None or isinstance(movie["tvdb_id"], int)
+                    )
 
     def test_scrapes_at_least_260_watchlist_entries(self):
         json_output = scrape_imdb_list(IMDB_WATCHLIST_URL)

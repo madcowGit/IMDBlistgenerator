@@ -33,6 +33,11 @@ python -m imdb_list_generator "https://www.imdb.com/chart/top/"
 The installed `imdb-list-generator` command can be used in place of
 `python -m imdb_list_generator`.
 
+TV series entries include a `tvdb_id` obtained through the TVDB API. Set
+`TVDB_API_KEY` in the environment to enable this lookup; scraping a TV series
+without the key or if TVDB lookup fails returns an error. Movie entries do not
+require the key.
+
 ## Web API
 
 Start the Flask server with:
@@ -84,7 +89,16 @@ services:
     image: ghcr.io/madcowgit/imdblistgenerator:latest
     ports:
       - "4444:4444"
+    environment:
+      TVDB_API_KEY: ${TVDB_API_KEY:-}
     restart: unless-stopped
+```
+
+Set `TVDB_API_KEY` in your shell before starting Compose if the list contains
+TV series:
+
+```bash
+export TVDB_API_KEY="your-tvdb-api-key"
 ```
 
 Start the service and follow its logs with:

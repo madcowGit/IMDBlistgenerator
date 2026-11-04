@@ -9,6 +9,7 @@ description = "Scrape IMDb lists and watchlists into JSON."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "certifi",
     "flask",
     "gunicorn",
     "seleniumbase",
