@@ -98,7 +98,8 @@ lists are refreshed immediately at startup and then every six hours by default.
 Set `IMDB_CACHE_INTERVAL_HOURS` to change the refresh interval and
 `IMDB_CACHE_DIR` to change where the JSON cache files are stored. Requests for
 configured URLs are served from disk; other URLs continue to be scraped on
-demand. A previous cache remains available if a refresh fails.
+demand. A trailing slash on the configured URL is optional when requesting the
+cache. A previous cache remains available if a refresh fails.
 
 ```yaml
 services:
@@ -114,8 +115,11 @@ services:
       IMDB_CACHE_INTERVAL_HOURS: ${IMDB_CACHE_INTERVAL_HOURS:-6}
       IMDB_CACHE_DIR: /app/cache
     volumes:
-      - ./cache:/app/cache
+      - imdb-cache:/app/cache
     restart: unless-stopped
+
+volumes:
+  imdb-cache:
 ```
 
 Set `TVDB_API_KEY` in your shell before starting Compose if a cached list
@@ -125,8 +129,11 @@ contains TV series:
 export TVDB_API_KEY="your-tvdb-api-key"
 ```
 
-The cache directory is persisted on the host in `./cache`. Compose must be able
-to write to this directory.
+The cache is persisted in the Docker-managed `imdb-cache` volume. This avoids
+host-directory ownership mismatches with the container's non-root `app` user
+(UID 10001). If you prefer a bind mount such as `./cache:/app/cache`, make sure
+the host directory is writable by UID 10001; on Linux, you can run
+`sudo chown -R 10001:10001 ./cache`.
 
 Start the service and follow its logs with:
 

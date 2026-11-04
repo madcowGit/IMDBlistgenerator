@@ -30,6 +30,25 @@ class ScrapeCacheTests(unittest.TestCase):
             self.assertEqual(cache.load(cache.urls[0]), expected)
             self.assertEqual(len(list(Path(cache_dir).glob("*.json"))), 1)
 
+    def test_cache_matches_configured_url_with_or_without_trailing_slash(self):
+        configured_url = (
+            "https://www.imdb.com/user/p.ug53yeky7gegylcric634z6yta/watchlist/"
+        )
+        requested_url = configured_url.rstrip("/")
+        expected = [{"title": "Cached", "imdb_id": "tt1234567"}]
+        with tempfile.TemporaryDirectory() as cache_dir:
+            cache = ScrapeCache(
+                [configured_url],
+                cache_dir,
+                6,
+                scraper=Mock(return_value=json.dumps(expected)),
+            )
+
+            cache.refresh_once()
+
+            self.assertTrue(cache.is_configured(requested_url))
+            self.assertEqual(cache.load(requested_url), expected)
+
     def test_failed_refresh_keeps_the_previous_cache(self):
         expected = [{"title": "Example", "imdb_id": "tt1234567"}]
         scraper = Mock(

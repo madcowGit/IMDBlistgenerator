@@ -7,6 +7,7 @@ import tempfile
 from pathlib import Path
 from threading import Event, Thread
 from typing import Any, Callable
+from urllib.parse import urlsplit, urlunsplit
 
 from imdb_list_generator.scraper import _validate_imdb_url, scrape_imdb_list
 
@@ -14,6 +15,20 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_CACHE_DIR = "/app/cache"
 DEFAULT_REFRESH_INTERVAL_HOURS = 6.0
+
+
+def _cache_key_url(url: str) -> str:
+    parsed_url = urlsplit(url)
+    path = parsed_url.path.rstrip("/") or "/"
+    return urlunsplit(
+        (
+            parsed_url.scheme,
+            parsed_url.netloc,
+            path,
+            parsed_url.query,
+            parsed_url.fragment,
+        )
+    )
 
 
 class CacheNotReadyError(RuntimeError):
@@ -41,7 +56,10 @@ class ScrapeCache:
             _validate_imdb_url(url)
 
     def is_configured(self, url: str) -> bool:
-        return url in self.urls
+        key_url = _cache_key_url(url)
+        return any(
+            _cache_key_url(configured_url) == key_url for configured_url in self.urls
+        )
 
     def load(self, url: str) -> list[Any]:
         if not self.is_configured(url):
@@ -93,7 +111,8 @@ class ScrapeCache:
             self._stop_event.wait(self.refresh_interval_seconds)
 
     def _cache_path(self, url: str) -> Path:
-        url_hash = hashlib.sha256(url.encode("utf-8")).hexdigest()
+        key_url = _cache_key_url(url)
+        url_hash = hashlib.sha256(key_url.encode("utf-8")).hexdigest()
         return self.cache_dir / f"{url_hash}.json"
 
     def _write(self, url: str, data: str) -> None:
