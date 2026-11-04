@@ -69,6 +69,13 @@ http://localhost:4444/api/scrape?url=https%3A%2F%2Fwww.imdb.com%2Fuser%2Fp.ug53y
 The response is a JSON array of scraped titles. `GET /` reports whether the
 service is up, and `GET /health` reports API and scraper availability.
 
+To return only items with a resolved TVDB ID, use
+`GET /api/scrapetvseries?url=...`:
+
+```text
+http://localhost:4444/api/scrapetvseries?url=https%3A%2F%2Fwww.imdb.com%2Flist%2Fls569954785%2F
+```
+
 ## Docker
 
 Build and run the API container locally:

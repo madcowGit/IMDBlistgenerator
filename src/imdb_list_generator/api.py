@@ -10,7 +10,7 @@ from imdb_list_generator.scraper import scrape_imdb_list
 def create_app() -> Flask:
     app = Flask(__name__)
 
-    def scrape_url(url: str) -> Any:
+    def scrape_url(url: str, *, tvdb_only: bool = False) -> Any:
         url = url.strip()
         if not url:
             return jsonify({"error": "IMDb list URL is required."}), 400
@@ -22,7 +22,14 @@ def create_app() -> Flask:
         except RuntimeError as exc:
             return jsonify({"error": str(exc)}), 502
 
-        return jsonify(json.loads(result))
+        items = json.loads(result)
+        if tvdb_only:
+            items = [
+                item
+                for item in items
+                if isinstance(item, dict) and item.get("tvdb_id") is not None
+            ]
+        return jsonify(items)
 
     @app.get("/")
     def status() -> Any:
@@ -61,6 +68,14 @@ def create_app() -> Flask:
             return jsonify({"error": "IMDb list URL is required."}), 400
 
         return scrape_url(url)
+
+    @app.get("/api/scrapetvseries")
+    def scrape_tv_series_from_browser() -> Any:
+        url = request.args.get("url")
+        if url is None:
+            return jsonify({"error": "IMDb list URL is required."}), 400
+
+        return scrape_url(url, tvdb_only=True)
 
     return app
 
