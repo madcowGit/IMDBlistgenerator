@@ -7,6 +7,15 @@ It is intended to be deployed in docker on your own local network where Radarr/S
 
 Note: because the scraper needs to open a browser window and browse the IMDB site to scrape, it is not a very fast solution. In the docker setup the scraped content is cached and updated every X hours. This means that there can be delay due to this mechanism
 
+
+Configure the lists in Sonarr and Radarr as follows:
+| Program | List Type | List URL |
+| -------- | -------- | -------- | 
+| Sonarr | Custom List | `http://localhost:4444/api/scrapetvseries?url=...` |
+| Radarr | StevenLu Custom | `http://localhost:4444/api/scrape?url=...` |
+
+When spinning up the container with new IMDB URLs, give it a few minutes to allow the lists to be cached.
+
 ## Docker
 
 The image is published on `ghcr.io/madcowgit/imdblistgenerator:latest`. Published release images support `linux/amd64` and `linux/arm64` under the same image tag.
