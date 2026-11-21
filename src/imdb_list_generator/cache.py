@@ -105,6 +105,20 @@ class ScrapeCache:
             except Exception:
                 logger.exception("Could not refresh IMDb cache for %s", url)
 
+    def refresh(self, url: str) -> list[Any]:
+        """Force a resync for one configured URL and atomically update its cache."""
+        url = url.strip()
+        if not self.is_configured(url):
+            raise ValueError("URL is not configured for caching.")
+
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        result = self.scraper(url)
+        refreshed_data = json.loads(result)
+        if not isinstance(refreshed_data, list):
+            raise RuntimeError("Scraper result must be a JSON list.")
+        self._write(url, result)
+        return refreshed_data
+
     def _refresh_loop(self) -> None:
         while not self._stop_event.is_set():
             self.refresh_once()
