@@ -76,6 +76,28 @@ def create_app() -> Flask:
 
         return scrape_url(payload["url"])
 
+    @app.post("/api/refresh")
+    def refresh_cache() -> Any:
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict) or not isinstance(payload.get("url"), str):
+            return jsonify({"error": "Request JSON must contain a string 'url'."}), 400
+
+        url = payload["url"].strip()
+        if not url:
+            return jsonify({"error": "IMDb list URL is required."}), 400
+        if scrape_cache is None:
+            return jsonify({"error": "No IMDb URLs are configured for caching."}), 503
+
+        try:
+            _validate_imdb_url(url)
+            items = scrape_cache.refresh(url)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        except RuntimeError as exc:
+            return jsonify({"error": str(exc)}), 502
+
+        return jsonify(items)
+
     @app.get("/api/scrape")
     def scrape_from_browser() -> Any:
         url = request.args.get("url")

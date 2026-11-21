@@ -67,6 +67,7 @@ services:
 | `/health` | GET | Returns health status of the API and Scraper. |
 | `/api/scrape` | GET/POST | Returns all entries (Movies & TV) in Steven Lu format. |
 | `/api/scrapetvseries` | GET | Returns TV series only, mapped for Sonarr (`TvdbId`, `Title`). |
+| `/api/refresh` | POST | Force-scrapes a configured IMDb URL and updates its cached results. |
 
 ### Usage Examples
 
@@ -81,6 +82,15 @@ curl -X POST http://localhost:4444/api/scrape \
   -H "Content-Type: application/json" \
   -d '{"url":"https://www.imdb.com/list/ls569954785/"}'
 ```
+
+**Force-refresh a configured list and replace its cache:**
+```bash
+curl -X POST http://localhost:4444/api/refresh \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://www.imdb.com/list/ls569954785/"}'
+```
+
+The refresh endpoint returns the freshly scraped entries. The URL must be listed in `IMDB_LIST_URLS`.
 
 ## Local Development
 

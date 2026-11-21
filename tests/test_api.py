@@ -97,6 +97,75 @@ class IMDbApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertIn("cached results", response.get_json()["error"])
 
+    @patch("imdb_list_generator.api.create_cache_from_environment")
+    def test_refresh_endpoint_refreshes_cache_and_returns_fresh_entries(
+        self, create_cache
+    ):
+        url = "https://www.imdb.com/list/ls123456789/"
+        expected = [{"title": "Fresh", "imdb_id": "tt1234567"}]
+        cache = create_cache.return_value
+        cache.refresh.return_value = expected
+        app = create_app()
+
+        response = app.test_client().post("/api/refresh", json={"url": url})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json(), expected)
+        cache.refresh.assert_called_once_with(url)
+        cache.start.assert_called_once()
+
+    @patch("imdb_list_generator.api.create_cache_from_environment")
+    def test_refresh_endpoint_requires_json_url(self, create_cache):
+        app = create_app()
+        client = app.test_client()
+
+        for payload in ({}, {"url": 42}, {"other": "value"}):
+            with self.subTest(payload=payload):
+                response = client.post("/api/refresh", json=payload)
+                self.assertEqual(response.status_code, 400)
+                self.assertIn("error", response.get_json())
+
+    @patch("imdb_list_generator.api.create_cache_from_environment", return_value=None)
+    def test_refresh_endpoint_returns_unavailable_without_configured_cache(
+        self, _create_cache
+    ):
+        response = create_app().test_client().post(
+            "/api/refresh", json={"url": "https://www.imdb.com/list/ls123456789/"}
+        )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("configured for caching", response.get_json()["error"])
+
+    @patch("imdb_list_generator.api.create_cache_from_environment")
+    def test_refresh_endpoint_returns_bad_request_for_unconfigured_url(
+        self, create_cache
+    ):
+        cache = create_cache.return_value
+        cache.refresh.side_effect = ValueError("URL is not configured for caching.")
+
+        response = create_app().test_client().post(
+            "/api/refresh", json={"url": "https://www.imdb.com/list/ls123456789/"}
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.get_json(), {"error": "URL is not configured for caching."}
+        )
+
+    @patch("imdb_list_generator.api.create_cache_from_environment")
+    def test_refresh_endpoint_returns_bad_gateway_when_refresh_fails(
+        self, create_cache
+    ):
+        cache = create_cache.return_value
+        cache.refresh.side_effect = RuntimeError("IMDb is unavailable")
+
+        response = create_app().test_client().post(
+            "/api/refresh", json={"url": "https://www.imdb.com/list/ls123456789/"}
+        )
+
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.get_json(), {"error": "IMDb is unavailable"})
+
     def test_browser_scrape_endpoint_requires_url(self):
         response = self.client.get("/api/scrape")
 
